@@ -63,6 +63,15 @@ function Get-BrowserPath {
             )
             foreach ($p in $paths) { if (Test-Path $p) { return $p } }
         }
+        "Chromium" {
+            $paths = @(
+                "$env:LOCALAPPDATA\Chromium\Application\chrome.exe",
+                "${env:ProgramFiles}\Chromium\Application\chrome.exe",
+                "${env:ProgramFiles(x86)}\Chromium\Application\chrome.exe",
+                "$env:LOCALAPPDATA\ungoogled-chromium\chrome.exe"
+            )
+            foreach ($p in $paths) { if (Test-Path $p) { return $p } }
+        }
         "Firefox" {
             $paths = @(
                 "${env:ProgramFiles}\Mozilla Firefox\firefox.exe",
@@ -112,6 +121,17 @@ function Show-BrowserMenu {
     } else {
         $browsers += @{ Name = "Brave"; Key = "Brave"; Exe = $null; Zip = "VaultBox-v0.1.0-chrome.zip"; ExtPage = "brave://extensions" }
         Write-Host "    [$index] Brave" -ForegroundColor Gray
+    }
+    $index++
+
+    $chromiumExe = Get-BrowserPath "Chromium"
+    if ($chromiumExe) {
+        $browsers += @{ Name = "Ungoogled Chromium"; Key = "Chromium"; Exe = $chromiumExe; Zip = "VaultBox-v0.1.0-chrome.zip"; ExtPage = "chrome://extensions" }
+        Write-Host "    [$index] Ungoogled Chromium" -ForegroundColor Green -NoNewline
+        Write-Host " (detected)" -ForegroundColor DarkGreen
+    } else {
+        $browsers += @{ Name = "Ungoogled Chromium"; Key = "Chromium"; Exe = $null; Zip = "VaultBox-v0.1.0-chrome.zip"; ExtPage = "chrome://extensions" }
+        Write-Host "    [$index] Ungoogled Chromium" -ForegroundColor Gray
     }
     $index++
 
