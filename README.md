@@ -2,6 +2,20 @@
 
 A fork of Bitwarden's browser extension modified to work **100% offline**. Your passwords never leave your device. No servers, no telemetry, no phone-home.
 
+## Quick Install (Windows)
+
+```powershell
+irm https://github.com/SysAdminDoc/VaultBox-Offline/releases/latest/download/Install-VaultBox.ps1 -OutFile Install-VaultBox.ps1; .\Install-VaultBox.ps1
+```
+
+Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox-Offline/releases/latest):
+
+| Asset                          | Description                                       |
+| ------------------------------ | ------------------------------------------------- |
+| `VaultBox-v0.1.0-chrome.zip`   | Chrome extension (load unpacked)                  |
+| `VaultBox-v0.1.0-firefox.zip`  | Firefox extension (load as temporary add-on)      |
+| `Install-VaultBox.ps1`         | Windows installer (auto-elevates, creates shortcuts) |
+
 ## What This Is
 
 VaultBox is a browser extension that provides the full Bitwarden password management experience (autofill, search, password generation, TOTP) while ensuring **zero network communication**. Your vault is stored locally and can be exported to local or external drives for backup and portability.
@@ -9,7 +23,7 @@ VaultBox is a browser extension that provides the full Bitwarden password manage
 ## Key Features
 
 - **Zero Network Traffic** - All server communication is blocked at the API layer. No DNS lookups, no HTTP requests, no WebSocket connections to any Bitwarden server or third party.
-- **Local Vault Storage** - Vault data lives in `chrome.storage.local` (encrypted). Export/import `.vaultbox` files to USB drives, NAS, or any local storage.
+- **Local Vault Storage** - Vault data lives in the browser's local storage (encrypted). Export/import `.vaultbox` files to USB drives, NAS, or any local storage.
 - **Full Autofill** - Login, credit card, identity, and FIDO2 autofill works exactly like standard Bitwarden.
 - **Password Generator** - Fully client-side password and passphrase generation.
 - **TOTP Codes** - Time-based one-time passwords generated locally.
@@ -66,12 +80,16 @@ npm run build:chrome
 3. Click "Load unpacked"
 4. Select the `apps/browser/build/` directory
 
-### Build for Firefox
+### Build and Load in Firefox
 
 ```bash
 cd apps/browser
 npm run build:firefox
 ```
+
+1. Open `about:debugging#/runtime/this-firefox`
+2. Click "Load Temporary Add-on..."
+3. Select any file inside the `apps/browser/build/` directory
 
 ## Vault File Format (.vaultbox)
 

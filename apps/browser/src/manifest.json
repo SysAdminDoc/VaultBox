@@ -55,8 +55,6 @@
     "tabs",
     "unlimitedStorage",
     "webNavigation",
-    "webRequest",
-    "webRequestBlocking",
     "notifications"
   ],
   "__safari__permissions": [
@@ -71,9 +69,7 @@
     "storage",
     "tabs",
     "unlimitedStorage",
-    "webNavigation",
-    "webRequest",
-    "webRequestBlocking"
+    "webNavigation"
   ],
   "optional_permissions": ["nativeMessaging", "privacy"],
   "__firefox__optional_permissions": ["nativeMessaging"],
