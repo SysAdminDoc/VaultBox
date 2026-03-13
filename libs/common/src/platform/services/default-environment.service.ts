@@ -82,33 +82,21 @@ export const USER_CLOUD_REGION_KEY = new UserKeyDefinition<CloudRegion>(
  *
  * In the future we desire to load these urls from the config endpoint.
  */
+// VaultBox Offline: All server URLs replaced with localhost (unreachable)
+// to ensure no accidental connections to any external server.
 export const PRODUCTION_REGIONS: RegionConfig[] = [
   {
     key: Region.US,
-    domain: "bitwarden.com",
+    domain: "localhost",
     urls: {
       base: null,
-      api: "https://api.bitwarden.com",
-      identity: "https://identity.bitwarden.com",
-      icons: "https://icons.bitwarden.net",
-      webVault: "https://vault.bitwarden.com",
-      notifications: "https://notifications.bitwarden.com",
-      events: "https://events.bitwarden.com",
-      scim: "https://scim.bitwarden.com",
-    },
-  },
-  {
-    key: Region.EU,
-    domain: "bitwarden.eu",
-    urls: {
-      base: null,
-      api: "https://api.bitwarden.eu",
-      identity: "https://identity.bitwarden.eu",
-      icons: "https://icons.bitwarden.eu",
-      webVault: "https://vault.bitwarden.eu",
-      notifications: "https://notifications.bitwarden.eu",
-      events: "https://events.bitwarden.eu",
-      scim: "https://scim.bitwarden.eu",
+      api: "http://localhost:0/blocked",
+      identity: "http://localhost:0/blocked",
+      icons: "http://localhost:0/blocked",
+      webVault: "http://localhost:0/blocked",
+      notifications: "http://localhost:0/blocked",
+      events: "http://localhost:0/blocked",
+      scim: "http://localhost:0/blocked",
     },
   },
 ];

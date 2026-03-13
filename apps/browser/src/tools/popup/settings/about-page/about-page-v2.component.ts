@@ -64,7 +64,7 @@ export class AboutPageV2Component {
       acceptButtonText: { key: "continue" },
     });
     if (confirmed) {
-      await BrowserApi.createNewTab("https://bitwarden.com/help/");
+      // VaultBox: External link disabled;
     }
   }
 

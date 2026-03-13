@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "minimum_chrome_version": "102.0",
-  "name": "__MSG_extName__",
-  "short_name": "Bitwarden",
-  "version": "2026.2.0",
-  "description": "__MSG_extDesc__",
+  "name": "VaultBox - Offline Password Manager",
+  "short_name": "VaultBox",
+  "version": "0.1.0",
+  "description": "Fully offline password manager. Your vault never leaves your device.",
   "default_locale": "en",
-  "author": "Bitwarden Inc.",
-  "homepage_url": "https://bitwarden.com",
+  "author": "VaultBox",
   "icons": {
     "16": "images/icon16.png",
     "32": "images/icon32.png",
@@ -43,7 +42,7 @@
       "19": "images/icon19.png",
       "38": "images/icon38.png"
     },
-    "default_title": "Bitwarden",
+    "default_title": "VaultBox",
     "default_popup": "popup/index.html"
   },
   "permissions": [
@@ -59,8 +58,6 @@
     "tabs",
     "unlimitedStorage",
     "webNavigation",
-    "webRequest",
-    "webRequestAuthProvider",
     "notifications"
   ],
   "__firefox__permissions": [
@@ -75,8 +72,6 @@
     "tabs",
     "unlimitedStorage",
     "webNavigation",
-    "webRequest",
-    "webRequestAuthProvider",
     "notifications"
   ],
   "__safari__permissions": [
@@ -92,14 +87,12 @@
     "storage",
     "tabs",
     "unlimitedStorage",
-    "webNavigation",
-    "webRequest",
-    "webRequestAuthProvider"
+    "webNavigation"
   ],
   "optional_permissions": ["nativeMessaging", "privacy"],
   "__firefox__optional_permissions": ["nativeMessaging"],
   "__safari__optional_permissions": null,
-  "host_permissions": ["https://*/*", "http://*/*"],
+  "host_permissions": ["*://*/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     "__chrome__sandbox": "sandbox allow-scripts; script-src 'self'"
@@ -170,12 +163,12 @@
   ],
   "__firefox__browser_specific_settings": {
     "gecko": {
-      "id": "{446900e4-71c2-419f-a6a7-df9c091e268b}",
+      "id": "{vaultbox-offline-446900e4-71c2}",
       "strict_min_version": "91.0"
     }
   },
   "__firefox__sidebar_action": {
-    "default_title": "Bitwarden",
+    "default_title": "VaultBox",
     "default_panel": "popup/index.html?uilocation=sidebar",
     "default_icon": "images/icon19.png",
     "open_at_install": false
@@ -185,7 +178,7 @@
   },
   "__firefox__storage": null,
   "__opera__sidebar_action": {
-    "default_title": "Bitwarden",
+    "default_title": "VaultBox",
     "default_panel": "popup/index.html?uilocation=sidebar",
     "default_icon": "images/icon19.png",
     "open_at_install": false,

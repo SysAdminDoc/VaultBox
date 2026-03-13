@@ -18,12 +18,9 @@ export const PHISHING_RESOURCES: Record<PhishingResourceType, PhishingResource[]
   [PhishingResourceType.Domains]: [
     {
       name: "Phishing.Database Domains",
-      primaryUrl:
-        "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-ACTIVE.txt",
-      checksumUrl:
-        "https://raw.githubusercontent.com/Phishing-Database/checksums/refs/heads/master/phishing-domains-ACTIVE.txt.md5",
-      todayUrl:
-        "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-domains-NEW-today.txt",
+      primaryUrl: "http://localhost:0/blocked", // VaultBox: Phishing list disabled
+      checksumUrl: "http://localhost:0/blocked",
+      todayUrl: "http://localhost:0/blocked",
       match: (url: URL, entry: string) => {
         if (!entry) {
           return false;
@@ -46,11 +43,9 @@ export const PHISHING_RESOURCES: Record<PhishingResourceType, PhishingResource[]
   [PhishingResourceType.Links]: [
     {
       name: "Phishing.Database Links",
-      primaryUrl: "https://assets.bitwarden.com/security/v1/link-blocklist.txt",
-      checksumUrl:
-        "https://raw.githubusercontent.com/Phishing-Database/checksums/refs/heads/master/phishing-links-ACTIVE.txt.md5",
-      todayUrl:
-        "https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/refs/heads/master/phishing-links-NEW-today.txt",
+      primaryUrl: "http://localhost:0/blocked", // VaultBox: Phishing list disabled
+      checksumUrl: "http://localhost:0/blocked",
+      todayUrl: "http://localhost:0/blocked",
       match: (url: URL, entry: string) => {
         if (!entry) {
           return false;

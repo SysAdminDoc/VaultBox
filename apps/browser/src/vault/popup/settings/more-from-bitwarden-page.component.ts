@@ -71,7 +71,7 @@ export class MoreFromBitwardenPageComponent {
       acceptButtonText: { key: "continue" },
     });
     if (confirmed) {
-      await BrowserApi.createNewTab("https://bitwarden.com/products/business/");
+      // VaultBox: External link disabled;
     }
   }
 
@@ -83,7 +83,7 @@ export class MoreFromBitwardenPageComponent {
       acceptButtonText: { key: "continue" },
     });
     if (confirmed) {
-      await BrowserApi.createNewTab("https://bitwarden.com/products/authenticator");
+      // VaultBox: External link disabled;
     }
   }
 
@@ -95,7 +95,7 @@ export class MoreFromBitwardenPageComponent {
       acceptButtonText: { key: "continue" },
     });
     if (confirmed) {
-      await BrowserApi.createNewTab("https://bitwarden.com/products/secrets-manager");
+      // VaultBox: External link disabled;
     }
   }
 
@@ -107,7 +107,7 @@ export class MoreFromBitwardenPageComponent {
       acceptButtonText: { key: "continue" },
     });
     if (confirmed) {
-      await BrowserApi.createNewTab("https://bitwarden.com/products/passwordless");
+      // VaultBox: External link disabled;
     }
   }
 }

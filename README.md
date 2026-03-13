@@ -1,34 +1,146 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/bitwarden/brand/main/screenshots/apps-combo-logo.png" alt="Bitwarden" />
-</p>
-<p align="center">
-  <a href="https://github.com/bitwarden/clients/actions/workflows/build-browser.yml?query=branch:main" target="_blank"><img src="https://github.com/bitwarden/clients/actions/workflows/build-browser.yml/badge.svg?branch=main" alt="GitHub Workflow browser build on main" /></a>
-  <a href="https://github.com/bitwarden/clients/actions/workflows/build-cli.yml?query=branch:main" target="_blank"><img src="https://github.com/bitwarden/clients/actions/workflows/build-cli.yml/badge.svg?branch=main" alt="GitHub Workflow CLI build on main" /></a>
-  <a href="https://github.com/bitwarden/clients/actions/workflows/build-desktop.yml?query=branch:main" target="_blank"><img src="https://github.com/bitwarden/clients/actions/workflows/build-desktop.yml/badge.svg?branch=main" alt="GitHub Workflow desktop build on main" /></a>
-  <a href="https://github.com/bitwarden/clients/actions/workflows/build-web.yml?query=branch:main" target="_blank"><img src="https://github.com/bitwarden/clients/actions/workflows/build-web.yml/badge.svg?branch=main" alt="GitHub Workflow web build on main" /></a>
-</p>
+# VaultBox - Fully Offline Password Manager
 
----
+A fork of Bitwarden's browser extension modified to work **100% offline**. Your passwords never leave your device. No servers, no telemetry, no phone-home.
 
-# Bitwarden Client Applications
+## What This Is
 
-This repository houses all Bitwarden client applications except the mobile applications ([iOS](https://github.com/bitwarden/ios) | [android](https://github.com/bitwarden/android)).
+VaultBox is a browser extension that provides the full Bitwarden password management experience (autofill, search, password generation, TOTP) while ensuring **zero network communication**. Your vault is stored locally and can be exported to local or external drives for backup and portability.
 
-Please refer to the [Clients section](https://contributing.bitwarden.com/getting-started/clients/) of the [Contributing Documentation](https://contributing.bitwarden.com/) for build instructions, recommended tooling, code style tips, and lots of other great information to get you started.
+## Key Features
 
-## Related projects:
+- **Zero Network Traffic** - All server communication is blocked at the API layer. No DNS lookups, no HTTP requests, no WebSocket connections to any Bitwarden server or third party.
+- **Local Vault Storage** - Vault data lives in `chrome.storage.local` (encrypted). Export/import `.vaultbox` files to USB drives, NAS, or any local storage.
+- **Full Autofill** - Login, credit card, identity, and FIDO2 autofill works exactly like standard Bitwarden.
+- **Password Generator** - Fully client-side password and passphrase generation.
+- **TOTP Codes** - Time-based one-time passwords generated locally.
+- **No Telemetry** - Event collection, usage analytics, and crash reporting are completely removed.
+- **No External URLs** - Install page, help links, and marketing redirects are all disabled.
 
-- [bitwarden/server](https://github.com/bitwarden/server): The core infrastructure backend (API, database, Docker, etc).
-- [bitwarden/ios](https://github.com/bitwarden/ios): Bitwarden iOS Password Manager & Authenticator apps.
-- [bitwarden/android](https://github.com/bitwarden/android): Bitwarden Android Password Manager & Authenticator apps.
-- [bitwarden/directory-connector](https://github.com/bitwarden/directory-connector): A tool for syncing a directory (AD, LDAP, Azure, G Suite, Okta) to an organization.
+## Architecture Changes from Bitwarden
 
-# We're Hiring!
+| Component            | Bitwarden                                                        | VaultBox                                                          |
+| -------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
+| API Service          | HTTP requests to `api.bitwarden.com`                             | `OfflineApiService` - blocks all network, returns local responses |
+| Sync Service         | Fetches vault from server                                        | `OfflineSyncService` - no-op, vault is already local              |
+| Notifications        | SignalR WebSocket to server                                      | `NoopServerNotificationsService` - disabled                       |
+| Event Upload         | Posts usage events to server                                     | `NoopEventUploadService` - events discarded                       |
+| Auth                 | OAuth2 token exchange with identity server                       | Local master password validation only                             |
+| Environment URLs     | `*.bitwarden.com` / `*.bitwarden.eu`                             | `localhost:0/blocked` (unreachable)                               |
+| Manifest Permissions | `webRequest`, `webRequestAuthProvider`, broad `host_permissions` | Stripped to minimum needed for autofill                           |
 
-Interested in contributing in a big way? Consider joining our team! We're hiring for many positions. Please take a look at our [Careers page](https://bitwarden.com/careers/) to see what opportunities are [currently open](https://bitwarden.com/careers/#open-positions) as well as what it's like to work at Bitwarden.
+## How It Works
 
-# Contribute
+1. **Install** the extension (load unpacked from `apps/browser/build/`)
+2. **Import** your vault from a Bitwarden JSON export or `.vaultbox` file
+3. **Use** the extension normally - autofill, search, generate passwords
+4. **Export** your vault to a `.vaultbox` file for backup on local/external drives
 
-Code contributions are welcome! Please commit any pull requests against the `main` branch. Learn more about how to contribute by reading the [Contributing Guidelines](https://contributing.bitwarden.com/contributing/). Check out the [Contributing Documentation](https://contributing.bitwarden.com/) for how to get started with your first contribution.
+## Building
 
-Security audits and feedback are welcome. Please open an issue or email us privately if the report is sensitive in nature. You can read our security policy in the [`SECURITY.md`](SECURITY.md) file.
+### Prerequisites
+
+- Node.js v22 (check `.nvmrc`)
+- npm
+
+### Build Steps
+
+```bash
+# Clone and enter the repo
+git clone <this-repo> vaultbox
+cd vaultbox
+
+# Install dependencies
+npm ci
+
+# Build the Chrome extension
+cd apps/browser
+npm run build:chrome
+
+# The built extension is in apps/browser/build/
+```
+
+### Load in Chrome
+
+1. Open `chrome://extensions/`
+2. Enable "Developer mode" (top right)
+3. Click "Load unpacked"
+4. Select the `apps/browser/build/` directory
+
+### Build for Firefox
+
+```bash
+cd apps/browser
+npm run build:firefox
+```
+
+## Vault File Format (.vaultbox)
+
+The `.vaultbox` file is a JSON file containing your encrypted vault data. The encryption keys are derived from your master password using Argon2id (or PBKDF2), matching Bitwarden's standard encryption.
+
+```json
+{
+  "format": "vaultbox-offline-vault",
+  "version": 1,
+  "exportDate": "2026-03-13T...",
+  "account": {
+    "email": "user@example.com",
+    "userId": "...",
+    "kdfType": 1,
+    "kdfIterations": 3,
+    "kdfMemory": 64,
+    "kdfParallelism": 4
+  },
+  "encryptedData": {
+    "userKey": "...",
+    "privateKey": "...",
+    "ciphers": [...],
+    "folders": [...],
+    "collections": [...],
+    "sends": [...],
+    "policies": [...]
+  }
+}
+```
+
+**Important:** The vault file contains encrypted data only. Without the master password, the data is unreadable. However, treat vault files as sensitive and store them securely.
+
+## Security Model
+
+- **Encryption**: AES-256-CBC with HMAC-SHA256 (same as Bitwarden)
+- **Key Derivation**: Argon2id or PBKDF2-SHA256 (configurable)
+- **Master Password**: Never stored in plaintext. Only the derived master key hash is used for validation.
+- **Zero Trust Network**: The extension has no ability to make network requests. The `send()` method in the API service throws an error for any network call attempt.
+- **No Tracking**: All event collection, analytics, and telemetry services are replaced with no-ops.
+
+## Files Modified
+
+### New Files (Offline Services)
+
+- `apps/browser/src/platform/offline/offline-api.service.ts` - Blocks all network requests
+- `apps/browser/src/platform/offline/offline-sync.service.ts` - Local-only sync
+- `apps/browser/src/platform/offline/offline-event-upload.service.ts` - No-op telemetry
+- `apps/browser/src/platform/offline/vault-file-manager.ts` - Import/export vault files
+- `apps/browser/src/platform/offline/offline-account.service.ts` - Local account management
+- `apps/browser/src/platform/offline/index.ts` - Barrel exports
+
+### Modified Files
+
+- `apps/browser/src/background/main.background.ts` - DI wiring swapped to offline services
+- `apps/browser/src/background/runtime.background.ts` - Disabled install page redirect
+- `apps/browser/src/manifest.v3.json` - Stripped permissions, rebranded
+- `apps/browser/src/manifest.json` - Stripped permissions, rebranded (MV2)
+- `apps/browser/src/_locales/en/messages.json` - Rebranded strings
+- `libs/common/src/platform/services/default-environment.service.ts` - Server URLs replaced with localhost
+- Various component files - External link navigations disabled
+
+## Limitations
+
+- **No Multi-Device Sync** - This is by design. Use vault file export/import to transfer between devices.
+- **No Account Recovery** - There is no server to recover your account. Back up your vault file and remember your master password.
+- **No Organization Features** - Organization sharing requires a server. Personal vault only.
+- **No Breach Reports** - HIBP password checking requires network access.
+- **No Emergency Access** - Requires server-side trusted contacts feature.
+
+## License
+
+This project is a fork of [Bitwarden](https://github.com/bitwarden/clients) and is subject to the Bitwarden License Agreement. VaultBox is not affiliated with Bitwarden Inc. See the original LICENSE files for details.
