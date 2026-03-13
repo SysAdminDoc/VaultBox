@@ -1568,7 +1568,7 @@ export default class MainBackground {
     await Promise.all(setUserKeyInMemoryPromises);
 
     await (this.i18nService as I18nService).init();
-    (this.eventUploadService as EventUploadService).init(true);
+    // VaultBox: Event upload init skipped (NoopEventUploadService)
 
     this.popupViewCacheBackgroundService.startObservingMessages();
     this.popupRouterCacheBackgroundService.init();
