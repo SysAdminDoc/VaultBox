@@ -82,21 +82,21 @@ export const USER_CLOUD_REGION_KEY = new UserKeyDefinition<CloudRegion>(
  *
  * In the future we desire to load these urls from the config endpoint.
  */
-// VaultBox Offline: All server URLs replaced with localhost (unreachable)
-// to ensure no accidental connections to any external server.
+// VaultBox: All URLs point to local VaultBox server (127.0.0.1:8787)
+// No external server communication - everything stays on localhost.
 export const PRODUCTION_REGIONS: RegionConfig[] = [
   {
     key: Region.US,
     domain: "localhost",
     urls: {
       base: null,
-      api: "http://localhost:0/blocked",
-      identity: "http://localhost:0/blocked",
-      icons: "http://localhost:0/blocked",
-      webVault: "http://localhost:0/blocked",
-      notifications: "http://localhost:0/blocked",
-      events: "http://localhost:0/blocked",
-      scim: "http://localhost:0/blocked",
+      api: "http://127.0.0.1:8787",
+      identity: "http://127.0.0.1:8787",
+      icons: "http://127.0.0.1:8787",
+      webVault: "http://127.0.0.1:8787",
+      notifications: "http://127.0.0.1:8787",
+      events: "http://127.0.0.1:8787",
+      scim: "http://127.0.0.1:8787",
     },
   },
 ];
