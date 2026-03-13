@@ -1,4 +1,4 @@
-# VaultBox Installer v0.1.0
+# VaultBox Installer v0.1.1
 # Professional GUI installer for VaultBox offline password manager
 
 param(
@@ -88,7 +88,7 @@ $script:WorkerBusy = $false
 $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="VaultBox Installer v0.1.0" Width="560" Height="660"
+        Title="VaultBox Installer v0.1.1" Width="560" Height="660"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         Background="#0d0e1a" Foreground="#e2e8f0">
     <Window.Resources>
@@ -324,7 +324,6 @@ function Start-InstallWorker($selectedDefs) {
             $zipName = $bdef.Zip
             $isFirefox = $bdef.IsFirefox
             $browserExe = $bdef.Exe
-            $extPage = $bdef.ExtPage
             $bkey = $bdef.Key
 
             QLog "--- $browserName ---" "Cyan"
@@ -367,14 +366,133 @@ function Start-InstallWorker($selectedDefs) {
                     continue
                 }
 
-                QLog "  Extension installed to $installDir" "Green"
+                QLog "  Extension files installed to $installDir" "Green"
             } catch {
                 QLog "  FAILED: $($_.Exception.Message)" "Red"
                 QLog "" ""
                 continue
             }
 
-            # Shortcuts
+            # --- Auto-install via enterprise policy (Chromium browsers) ---
+            if (-not $isFirefox) {
+                try {
+                    # Pack CRX using the browser's own --pack-extension
+                    $crxDir = Join-Path $installDir "_crx"
+                    if (-not (Test-Path $crxDir)) { New-Item $crxDir -ItemType Directory -Force | Out-Null }
+
+                    $keyFile = Join-Path $crxDir "vaultbox.pem"
+                    $crxFile = Join-Path $crxDir "vaultbox.crx"
+
+                    if ($browserExe) {
+                        QLog "  Packing CRX with $browserName..." "Yellow"
+                        $packArgs = "--pack-extension=`"$installDir`""
+                        if (Test-Path $keyFile) {
+                            $packArgs += " --pack-extension-key=`"$keyFile`""
+                        }
+                        $packProc = Start-Process -FilePath $browserExe -ArgumentList $packArgs -PassThru -WindowStyle Hidden
+                        $packProc | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+
+                        # Chrome puts the .crx and .pem next to the source dir
+                        $parentDir = Split-Path $installDir
+                        $baseName = Split-Path $installDir -Leaf
+                        $generatedCrx = Join-Path $parentDir "$baseName.crx"
+                        $generatedPem = Join-Path $parentDir "$baseName.pem"
+
+                        if (Test-Path $generatedCrx) {
+                            Move-Item $generatedCrx $crxFile -Force
+                            if (Test-Path $generatedPem) { Move-Item $generatedPem $keyFile -Force }
+                            QLog "  CRX packed successfully." "Green"
+                        } else {
+                            QLog "  CRX packing skipped (browser may not support --pack-extension)." "Yellow"
+                            QLog "  Falling back to --load-extension shortcut method." ""
+                        }
+                    }
+
+                    if (Test-Path $crxFile) {
+                        # Write update manifest XML for local CRX
+                        $updateXml = Join-Path $crxDir "updates.xml"
+
+                        # Get extension ID from CRX header (first 16 bytes of public key -> hex -> a-p mapping)
+                        # Simpler: use the unpacked extension with registry policy pointing to update URL
+                        # Actually, ExtensionInstallForcelist format: <extension_id>;file:///path/to/updates.xml
+                        # We need the extension ID. For packed CRX, we can extract it from the file.
+                        # Easiest approach: compute from the .pem key file
+
+                        $extId = $null
+                        if (Test-Path $keyFile) {
+                            # Extension ID = first 32 chars of SHA256 of DER public key, mapped a=0..p=15
+                            $pemContent = Get-Content $keyFile -Raw
+                            $pemB64 = ($pemContent -replace '-----[^-]+-----', '' -replace '\s', '').Trim()
+                            $derBytes = [Convert]::FromBase64String($pemB64)
+                            $sha = [System.Security.Cryptography.SHA256]::Create()
+                            $hash = $sha.ComputeHash($derBytes)
+                            $extId = -join ($hash[0..15] | ForEach-Object { [char]([int][char]'a' + ($_ -shr 4)); [char]([int][char]'a' + ($_ -band 0x0f)) })
+                            $sha.Dispose()
+                        }
+
+                        if ($extId) {
+                            QLog "  Extension ID: $extId" ""
+                            $crxFileUri = "file:///" + ($crxFile -replace '\\', '/')
+
+                            # Write updates.xml
+                            $xmlContent = @"
+<?xml version='1.0' encoding='UTF-8'?>
+<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
+  <app appid='$extId'>
+    <updatecheck codebase='$crxFileUri' version='0.1.0' />
+  </app>
+</gupdate>
+"@
+                            Set-Content $updateXml $xmlContent -Encoding UTF8
+                            $updateUri = "file:///" + ($updateXml -replace '\\', '/')
+
+                            # Set registry policy per browser
+                            $policyPaths = @{
+                                Chrome   = "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
+                                Edge     = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist"
+                                Brave    = "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallForcelist"
+                                Chromium = "HKLM:\SOFTWARE\Policies\Chromium\ExtensionInstallForcelist"
+                            }
+
+                            $regPath = $policyPaths[$bkey]
+                            if ($regPath) {
+                                if (-not (Test-Path $regPath)) {
+                                    New-Item -Path $regPath -Force | Out-Null
+                                }
+
+                                # Find next available slot (1, 2, 3...)
+                                $existing = Get-Item -LiteralPath $regPath -ErrorAction SilentlyContinue
+                                $slot = 1
+                                $alreadySet = $false
+                                if ($existing) {
+                                    $usedSlots = $existing.GetValueNames() | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ }
+                                    if ($usedSlots) { $slot = ($usedSlots | Measure-Object -Maximum).Maximum + 1 }
+                                    foreach ($v in $existing.GetValueNames()) {
+                                        $val = $existing.GetValue($v)
+                                        if ($val -like "$extId;*") { $alreadySet = $true; break }
+                                    }
+                                    if ($alreadySet) {
+                                        QLog "  Registry policy already set for $browserName." "Yellow"
+                                    }
+                                }
+
+                                if (-not $alreadySet) {
+                                    Set-ItemProperty -LiteralPath $regPath -Name "$slot" -Value "$extId;$updateUri" -Type String
+                                    QLog "  Registry policy set - $browserName will auto-load VaultBox!" "Green"
+                                }
+                                QLog "  Extension auto-installs on next $browserName launch." "Green"
+                            }
+                        } else {
+                            QLog "  Could not determine extension ID. Using shortcut fallback." "Yellow"
+                        }
+                    }
+                } catch {
+                    QLog "  Auto-install policy failed: $($_.Exception.Message)" "Yellow"
+                    QLog "  Falling back to shortcut method." ""
+                }
+            }
+
+            # Shortcuts (always create as fallback / convenience)
             if ($browserExe -and -not $isFirefox) {
                 try {
                     $shell = New-Object -ComObject WScript.Shell
@@ -402,20 +520,121 @@ function Start-InstallWorker($selectedDefs) {
             }
 
             if ($isFirefox) {
-                QLog "  -> Open about:debugging -> Load Temporary Add-on" ""
+                QLog "  -> Firefox: Open about:debugging -> Load Temporary Add-on" ""
+                QLog "  -> Select any file inside: $installDir" ""
             } else {
-                QLog "  -> Open $extPage -> Developer mode -> Load unpacked" ""
-                QLog "  -> Or use 'VaultBox ($bkey)' desktop shortcut" ""
-            }
-
-            if ($browserExe) {
-                try { Start-Process $browserExe $extPage } catch {}
+                QLog "  -> Extension will auto-load via enterprise policy on next launch." ""
+                QLog "  -> Or use 'VaultBox ($bkey)' desktop shortcut as backup." ""
             }
 
             QLog "" ""
         }
 
+        # --- VaultBox Server Setup ---
+        QLog "--- VaultBox Server ---" "Cyan"
+        $serverDir = Join-Path $installDir "server"
+        if (-not (Test-Path $serverDir)) { New-Item $serverDir -ItemType Directory -Force | Out-Null }
+
+        $serverScript = Join-Path $serverDir "vaultbox_server.py"
+        $localServer = Join-Path $scriptDir "server\vaultbox_server.py"
+
+        # Copy server from local repo or download
+        if (Test-Path $localServer) {
+            QLog "  Found local server script." "Yellow"
+            Copy-Item $localServer $serverScript -Force
+            $reqFile = Join-Path $scriptDir "server\requirements.txt"
+            if (Test-Path $reqFile) { Copy-Item $reqFile (Join-Path $serverDir "requirements.txt") -Force }
+        } else {
+            QLog "  Downloading server script..." "Yellow"
+            try {
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                $ProgressPreference = 'SilentlyContinue'
+                Invoke-WebRequest -Uri "$releaseUrl/vaultbox_server.py" -OutFile $serverScript -UseBasicParsing
+                Invoke-WebRequest -Uri "$releaseUrl/requirements.txt" -OutFile (Join-Path $serverDir "requirements.txt") -UseBasicParsing
+                QLog "  Server downloaded." "Green"
+            } catch {
+                QLog "  Warning: Could not download server. $($_.Exception.Message)" "Yellow"
+            }
+        }
+
+        # Check for Python
+        $pythonExe = $null
+        foreach ($cmd in @("python", "python3", "py")) {
+            try {
+                $ver = & $cmd --version 2>&1
+                if ($ver -match "Python 3") { $pythonExe = $cmd; break }
+            } catch {}
+        }
+
+        if ($pythonExe -and (Test-Path $serverScript)) {
+            QLog "  Python found: $pythonExe" "Green"
+
+            # Install requirements
+            $reqFile = Join-Path $serverDir "requirements.txt"
+            if (Test-Path $reqFile) {
+                QLog "  Installing Python dependencies..." "Yellow"
+                try {
+                    & $pythonExe -m pip install -r $reqFile --break-system-packages -q 2>&1 | Out-Null
+                    QLog "  Dependencies installed." "Green"
+                } catch {
+                    QLog "  Warning: pip install failed. $($_.Exception.Message)" "Yellow"
+                }
+            }
+
+            # Create startup batch file
+            $batFile = Join-Path $serverDir "start-server.bat"
+            $batContent = "@echo off`r`nstart /B `"VaultBox Server`" $pythonExe `"$serverScript`""
+            Set-Content $batFile $batContent -Encoding ASCII
+
+            # Create startup shortcut (run on Windows login)
+            try {
+                $shell = New-Object -ComObject WScript.Shell
+                $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
+                $lnk = $shell.CreateShortcut((Join-Path $startupDir "VaultBox Server.lnk"))
+                $lnk.TargetPath = $pythonExe
+                $lnk.Arguments = "`"$serverScript`""
+                $lnk.WorkingDirectory = $serverDir
+                $lnk.Description = "VaultBox Local Server"
+                $lnk.WindowStyle = 7  # Minimized
+                $lnk.Save()
+                QLog "  Server set to auto-start on login." "Green"
+            } catch {
+                QLog "  Warning: Could not create startup shortcut." "Yellow"
+            }
+
+            # Start server now
+            QLog "  Starting VaultBox Server..." "Yellow"
+            try {
+                Start-Process $pythonExe -ArgumentList "`"$serverScript`"" -WorkingDirectory $serverDir -WindowStyle Hidden
+                Start-Sleep -Seconds 2
+
+                # Verify server is running
+                try {
+                    Invoke-WebRequest -Uri "http://127.0.0.1:8787/alive" -UseBasicParsing -TimeoutSec 3 | Out-Null
+                    QLog "  VaultBox Server running on http://127.0.0.1:8787" "Green"
+                } catch {
+                    QLog "  Server started but not responding yet. It may need a moment." "Yellow"
+                }
+            } catch {
+                QLog "  Warning: Could not start server. $($_.Exception.Message)" "Yellow"
+            }
+        } else {
+            if (-not $pythonExe) {
+                QLog "  Python 3 not found. Install Python 3.10+ to use the VaultBox server." "Red"
+                QLog "  Download from: https://python.org/downloads/" ""
+            }
+            if (-not (Test-Path $serverScript)) {
+                QLog "  Server script not found." "Red"
+            }
+        }
+
+        QLog "" ""
         QLog "Installation complete!" "Green"
+        QLog "" ""
+        QLog "Next steps:" ""
+        QLog "  1. Open your browser - VaultBox extension should appear." ""
+        QLog "  2. Create an account (email + master password)." ""
+        QLog "  3. Start adding passwords to your local vault!" ""
     }).AddArgument($queue).AddArgument($defs).AddArgument($installDir).AddArgument($releaseUrl).AddArgument($scriptDir) | Out-Null
 
     $handle = $ps.BeginInvoke()
@@ -452,6 +671,45 @@ function Start-UninstallWorker {
 
         QLog "Uninstalling VaultBox..." "Yellow"
 
+        # Stop VaultBox Server process
+        try {
+            $serverProcs = Get-Process -Name "python*" -ErrorAction SilentlyContinue | Where-Object {
+                try { $_.CommandLine -like "*vaultbox_server*" } catch { $false }
+            }
+            if ($serverProcs) {
+                $serverProcs | Stop-Process -Force
+                QLog "Stopped VaultBox Server process." "Green"
+            }
+        } catch {}
+
+        # Remove startup shortcut
+        $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
+        $startupLnk = Join-Path $startupDir "VaultBox Server.lnk"
+        if (Test-Path $startupLnk) {
+            Remove-Item $startupLnk -Force
+            QLog "Removed server startup shortcut." "Green"
+        }
+
+        # Remove registry policies
+        $policyPaths = @(
+            "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
+            "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist"
+            "HKLM:\SOFTWARE\Policies\BraveSoftware\Brave\ExtensionInstallForcelist"
+            "HKLM:\SOFTWARE\Policies\Chromium\ExtensionInstallForcelist"
+        )
+        foreach ($regPath in $policyPaths) {
+            if (Test-Path -LiteralPath $regPath) {
+                $regItem = Get-Item -LiteralPath $regPath
+                foreach ($name in $regItem.GetValueNames()) {
+                    $val = $regItem.GetValue($name)
+                    if ($val -like "*vaultbox*") {
+                        Remove-ItemProperty -LiteralPath $regPath -Name $name -Force
+                        QLog "Removed registry policy: $regPath\$name" "Green"
+                    }
+                }
+            }
+        }
+
         if (Test-Path $installDir) {
             Remove-Item $installDir -Recurse -Force
             QLog "Removed $installDir" "Green"
@@ -470,7 +728,7 @@ function Start-UninstallWorker {
 
         QLog "" ""
         QLog "VaultBox uninstalled." "Green"
-        QLog "Remove the extension from your browser(s) manually if loaded." ""
+        QLog "Restart your browser(s) to complete removal." ""
     }).AddArgument($queue).AddArgument($installDir) | Out-Null
 
     $handle = $ps.BeginInvoke()
