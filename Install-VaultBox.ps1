@@ -70,11 +70,11 @@ function Get-BrowserExe([string]$key) {
 }
 
 $script:BrowserDefs = @(
-    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-v0.1.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-v0.1.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-v0.1.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-v0.1.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-v0.1.0-firefox.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
+    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-v0.2.0-firefox.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
 )
 
 foreach ($b in $script:BrowserDefs) {
@@ -291,8 +291,24 @@ function Start-InstallWorker {
 
         function QLog($text, $color) { $queue.Enqueue(@{ Text=$text; Color=$color }) }
 
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         $ProgressPreference = 'SilentlyContinue'
+
+        function Download-File([string]$url, [string]$outPath) {
+            # Try Invoke-WebRequest first, then fall back to WebClient
+            try {
+                Invoke-WebRequest -Uri $url -OutFile $outPath -UseBasicParsing -TimeoutSec 60
+                return $true
+            } catch {}
+            try {
+                $wc = New-Object System.Net.WebClient
+                $wc.Headers.Add("User-Agent", "VaultBox-Installer/0.2.0")
+                $wc.DownloadFile($url, $outPath)
+                $wc.Dispose()
+                return $true
+            } catch {}
+            return $false
+        }
 
         QLog "VaultBox Installer v0.2.0" "Cyan"
         QLog "" ""
@@ -319,15 +335,18 @@ function Start-InstallWorker {
             if (Test-Path $reqFile) { Copy-Item $reqFile (Join-Path $serverDir "requirements.txt") -Force }
         } else {
             QLog "  Downloading server..." "Yellow"
-            try {
-                Invoke-WebRequest -Uri "$releaseUrl/vaultbox_server.py" -OutFile $serverScript -UseBasicParsing
-                Invoke-WebRequest -Uri "$releaseUrl/requirements.txt" -OutFile (Join-Path $serverDir "requirements.txt") -UseBasicParsing
-                QLog "  Server downloaded." "Green"
-            } catch {
-                QLog "  ERROR: Could not download server files." "Red"
-                QLog "  $($_.Exception.Message)" "Red"
+            $reqDest = Join-Path $serverDir "requirements.txt"
+            $ok1 = Download-File "$releaseUrl/vaultbox_server.py" $serverScript
+            $ok2 = Download-File "$releaseUrl/requirements.txt" $reqDest
+            if (-not $ok1) {
+                QLog "  ERROR: Could not download vaultbox_server.py" "Red"
+                QLog "  Check your internet connection and try again." ""
                 return
             }
+            if (-not $ok2) {
+                QLog "  Warning: Could not download requirements.txt" "Yellow"
+            }
+            QLog "  Server downloaded." "Green"
         }
 
         # Find or install Python
@@ -361,7 +380,7 @@ function Start-InstallWorker {
             try {
                 if (-not (Test-Path $pythonDir)) { New-Item $pythonDir -ItemType Directory -Force | Out-Null }
                 $pythonZip = Join-Path $env:TEMP "python-embed.zip"
-                Invoke-WebRequest -Uri $pythonEmbedUrl -OutFile $pythonZip -UseBasicParsing
+                if (-not (Download-File $pythonEmbedUrl $pythonZip)) { throw "Download failed" }
                 Expand-Archive $pythonZip $pythonDir -Force
                 Remove-Item $pythonZip -Force -ErrorAction SilentlyContinue
 
@@ -378,7 +397,7 @@ function Start-InstallWorker {
                 # Install pip
                 QLog "  Installing pip..." "Yellow"
                 $getPip = Join-Path $env:TEMP "get-pip.py"
-                Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip -UseBasicParsing
+                if (-not (Download-File "https://bootstrap.pypa.io/get-pip.py" $getPip)) { throw "Could not download pip installer" }
                 & $pythonExe $getPip --no-warn-script-location 2>&1 | Out-Null
                 Remove-Item $getPip -Force -ErrorAction SilentlyContinue
 
@@ -431,7 +450,9 @@ function Start-InstallWorker {
             Start-Sleep -Seconds 3
 
             try {
-                Invoke-WebRequest -Uri "http://127.0.0.1:8787/alive" -UseBasicParsing -TimeoutSec 5 | Out-Null
+                $wc = New-Object System.Net.WebClient
+                $wc.DownloadString("http://127.0.0.1:8787/alive") | Out-Null
+                $wc.Dispose()
                 QLog "  Server running on http://127.0.0.1:8787" "Green"
             } catch {
                 QLog "  Server started but not responding yet. It may need a moment." "Yellow"
@@ -467,15 +488,14 @@ function Start-InstallWorker {
                 Expand-Archive (Join-Path $scriptDir $zipName) $extDir -Force
             } else {
                 QLog "  Downloading extension..." "Yellow"
-                try {
-                    $tmpZip = Join-Path $env:TEMP $zipName
-                    Invoke-WebRequest -Uri "$releaseUrl/$zipName" -OutFile $tmpZip -UseBasicParsing
+                $tmpZip = Join-Path $env:TEMP $zipName
+                if (Download-File "$releaseUrl/$zipName" $tmpZip) {
                     Expand-Archive $tmpZip $extDir -Force
                     Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
                     QLog "  Extension downloaded." "Green"
-                } catch {
+                } else {
                     QLog "  ERROR: Could not download extension." "Red"
-                    QLog "  $($_.Exception.Message)" "Red"
+                    QLog "  Check your internet connection and try again." ""
                     return
                 }
             }
