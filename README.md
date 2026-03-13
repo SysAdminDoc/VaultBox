@@ -5,10 +5,10 @@ A fork of Bitwarden's browser extension modified to work **100% offline**. Your 
 ## Quick Install (Windows)
 
 ```powershell
-irm https://github.com/SysAdminDoc/VaultBox-Offline/releases/latest/download/Install-VaultBox.ps1 -OutFile Install-VaultBox.ps1; .\Install-VaultBox.ps1
+irm https://github.com/SysAdminDoc/VaultBox/releases/latest/download/Install-VaultBox.ps1 -OutFile Install-VaultBox.ps1; .\Install-VaultBox.ps1
 ```
 
-Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox-Offline/releases/latest):
+Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox/releases/latest):
 
 | Asset                          | Description                                       |
 | ------------------------------ | ------------------------------------------------- |
