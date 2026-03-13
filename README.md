@@ -1,6 +1,6 @@
 # VaultBox - Local Password Manager
 
-A fork of Bitwarden's browser extension with a **local server backend**. Your passwords never leave your device. No cloud servers, no telemetry, no phone-home.
+A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's browser extension that stores everything locally on your computer. No cloud servers, no accounts to create online, no telemetry.
 
 ## Quick Install (Windows)
 
@@ -8,17 +8,21 @@ A fork of Bitwarden's browser extension with a **local server backend**. Your pa
 irm https://github.com/SysAdminDoc/VaultBox/releases/latest/download/Install-VaultBox.ps1 -OutFile Install-VaultBox.ps1; .\Install-VaultBox.ps1
 ```
 
+No prerequisites needed. The installer handles everything automatically - including Python, the local server, and browser extension setup.
+
 Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox/releases/latest):
 
-| Asset                         | Description                                          |
-| ----------------------------- | ---------------------------------------------------- |
-| `VaultBox-v0.1.0-chrome.zip`  | Chrome extension (load unpacked)                     |
-| `VaultBox-v0.1.0-firefox.zip` | Firefox extension (load as temporary add-on)         |
-| `Install-VaultBox.ps1`        | Windows GUI installer (extension + server + startup) |
+| Asset                         | Description                                  |
+| ----------------------------- | -------------------------------------------- |
+| `Install-VaultBox.ps1`        | One-click GUI installer (recommended)        |
+| `VaultBox-v0.1.0-chrome.zip`  | Chrome/Edge/Brave extension (manual install) |
+| `VaultBox-v0.1.0-firefox.zip` | Firefox extension (manual install)           |
 
 ## What This Is
 
-VaultBox is a browser extension + local server that provides the full Bitwarden password management experience (autofill, search, password generation, TOTP) while keeping everything on your machine. The extension talks to a lightweight Python server running on `127.0.0.1:8787` instead of Bitwarden's cloud.
+VaultBox gives you Bitwarden's full password management experience (autofill, search, password generation, TOTP) while keeping everything on your machine. Think of it as **KeePass with browser autofill and a modern UI**.
+
+The extension talks to a lightweight local server running on `127.0.0.1:8787` instead of Bitwarden's cloud. Your passwords never leave your device.
 
 ## Architecture
 
@@ -47,29 +51,30 @@ All encryption/decryption happens in the extension (client-side). The server onl
 - **System Tray** - Server runs in the system tray with status indicator and quick access to data folder.
 - **Auto-Start** - Server starts automatically on Windows login.
 - **No Telemetry** - Event collection, usage analytics, and crash reporting are completely removed.
+- **No Prerequisites** - Installer auto-downloads portable Python if needed. Nothing to install first.
 
 ## How It Works
 
-1. **Install** - Run the installer or manually set up the extension + server
+1. **Install** - Run `Install-VaultBox.ps1` (one click)
 2. **Server starts** - VaultBox Server runs in the system tray on `127.0.0.1:8787`
 3. **Create account** - Open the extension, register with email + master password (stored locally)
 4. **Use normally** - Add passwords, autofill, generate passwords, organize with folders
 5. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS for backup
 
-## Architecture Changes from Bitwarden
+## VaultBox vs KeePass vs Bitwarden
 
-| Component            | Bitwarden                            | VaultBox                                |
-| -------------------- | ------------------------------------ | --------------------------------------- |
-| API Backend          | `api.bitwarden.com` (cloud)          | `127.0.0.1:8787` (local Python server)  |
-| Database             | SQL Server / PostgreSQL (cloud)      | SQLite (local file)                     |
-| Sync                 | Cloud sync across devices            | Local sync with localhost server        |
-| Notifications        | SignalR WebSocket to cloud           | Disabled (no-op)                        |
-| Event Upload         | Posts usage events to cloud          | Disabled (no-op)                        |
-| Auth                 | OAuth2 with cloud identity server    | Local JWT auth with localhost server    |
-| Environment URLs     | `*.bitwarden.com` / `*.bitwarden.eu` | `127.0.0.1:8787` (all endpoints)        |
-| Manifest Permissions | Broad host access                    | Stripped to minimum needed for autofill |
+| Feature            | KeePass              | VaultBox              | Bitwarden         |
+| ------------------ | -------------------- | --------------------- | ----------------- |
+| Storage            | Local .kdbx file     | Local SQLite          | Cloud             |
+| Browser Autofill   | Via plugins (clunky) | Native (built-in)     | Native (built-in) |
+| UI                 | Desktop-era          | Modern (Bitwarden UI) | Modern            |
+| Password Generator | Yes                  | Yes                   | Yes               |
+| TOTP               | Via plugins          | Built-in              | Built-in (paid)   |
+| Multi-device Sync  | Manual file copy     | Manual file copy      | Automatic         |
+| Internet Required  | No                   | No                    | Yes               |
+| Open Source        | Yes                  | Yes                   | Yes               |
 
-## Building
+## Building from Source
 
 ### Prerequisites
 
@@ -118,23 +123,24 @@ The server starts on `http://127.0.0.1:8787` with a system tray icon.
 
 ## Server API
 
-The VaultBox server implements a subset of the Bitwarden API:
+The VaultBox server implements the Bitwarden-compatible API:
 
-| Endpoint                  | Method | Description            |
-| ------------------------- | ------ | ---------------------- |
-| `/api/accounts/prelogin`  | POST   | Get KDF parameters     |
-| `/api/accounts/register`  | POST   | Create local account   |
-| `/identity/connect/token` | POST   | Login (get JWT + keys) |
-| `/api/sync`               | GET    | Full vault sync        |
-| `/api/ciphers`            | POST   | Create vault item      |
-| `/api/ciphers/{id}`       | PUT    | Update vault item      |
-| `/api/ciphers/{id}`       | DELETE | Delete vault item      |
-| `/api/folders`            | POST   | Create folder          |
-| `/api/folders/{id}`       | PUT    | Update folder          |
-| `/api/folders/{id}`       | DELETE | Delete folder          |
-| `/api/ciphers/import`     | POST   | Bulk import            |
-| `/api/accounts/profile`   | GET    | User profile           |
-| `/api/accounts/password`  | POST   | Change master password |
+| Endpoint                                     | Method | Description            |
+| -------------------------------------------- | ------ | ---------------------- |
+| `/accounts/prelogin`                         | POST   | Get KDF parameters     |
+| `/accounts/register/send-verification-email` | POST   | Start registration     |
+| `/accounts/register/finish`                  | POST   | Complete registration  |
+| `/connect/token`                             | POST   | Login (get JWT + keys) |
+| `/sync`                                      | GET    | Full vault sync        |
+| `/ciphers`                                   | POST   | Create vault item      |
+| `/ciphers/{id}`                              | PUT    | Update vault item      |
+| `/ciphers/{id}`                              | DELETE | Delete vault item      |
+| `/folders`                                   | POST   | Create folder          |
+| `/folders/{id}`                              | PUT    | Update folder          |
+| `/folders/{id}`                              | DELETE | Delete folder          |
+| `/ciphers/import`                            | POST   | Bulk import            |
+| `/accounts/profile`                          | GET    | User profile           |
+| `/accounts/password`                         | POST   | Change master password |
 
 All other Bitwarden API endpoints return safe defaults (empty lists, 200 OK).
 

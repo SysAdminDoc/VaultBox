@@ -1,4 +1,4 @@
-# VaultBox Server v0.1.0
+# VaultBox Server v0.2.0
 # Local Bitwarden-compatible API server for VaultBox offline password manager
 # Runs on 127.0.0.1:8787 - never exposed to network
 
@@ -56,7 +56,8 @@ from PIL import Image, ImageDraw
 
 HOST = "127.0.0.1"
 PORT = 8787
-DATA_DIR = Path(os.environ.get("VAULTBOX_DATA", os.path.join(os.environ["LOCALAPPDATA"], "VaultBox")))
+DATA_DIR = Path(os.environ.get("VAULTBOX_DATA", os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "VaultBox")))
 DB_PATH = DATA_DIR / "vault.db"
 JWT_SECRET = None  # Generated on first run, stored in DB
 JWT_ALGORITHM = "HS256"
@@ -209,7 +210,7 @@ def get_current_user(request: Request) -> dict:
 # FastAPI App
 # =============================================================================
 
-app = FastAPI(title="VaultBox Local Server", version="0.1.0")
+app = FastAPI(title="VaultBox Local Server", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -225,18 +226,18 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"server": "VaultBox", "version": "0.1.0", "status": "running"}
+    return {"server": "VaultBox", "version": "0.2.0", "status": "running"}
 
 @app.get("/alive")
-@app.get("/api/alive")
 async def alive():
     return Response(content="", status_code=200)
 
 # ---------------------------------------------------------------------------
 # Pre-login (KDF params)
+# Extension sends: POST /accounts/prelogin (via identity URL)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/accounts/prelogin")
+@app.post("/accounts/prelogin")
 async def prelogin(request: Request):
     body = await request.json()
     email = body.get("email", "").lower().strip()
@@ -261,12 +262,65 @@ async def prelogin(request: Request):
     }
 
 # ---------------------------------------------------------------------------
-# Registration
+# Registration (new Bitwarden flow)
+# Extension sends:
+#   POST /accounts/register/send-verification-email (via identity URL)
+#   POST /accounts/register/finish (via identity URL)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/accounts/register")
-@app.post("/identity/accounts/register")
-async def register(request: Request):
+@app.post("/accounts/register/send-verification-email")
+async def register_send_verification(request: Request):
+    body = await request.json()
+    email = body.get("email", "").lower().strip()
+
+    # For local server, skip email verification entirely.
+    # Return a token that can be used to complete registration.
+    token = base64.urlsafe_b64encode(f"vaultbox-verify:{email}:{uuid.uuid4().hex}".encode()).decode()
+    log.info(f"Registration verification requested for: {email} (auto-approved)")
+    return Response(content=json.dumps(token), media_type="application/json", status_code=200)
+
+@app.post("/accounts/register/finish")
+async def register_finish(request: Request):
+    body = await request.json()
+    email = body.get("email", "").lower().strip()
+    master_hash = body.get("masterPasswordHash", "")
+    hint = body.get("masterPasswordHint", "")
+    user_symmetric_key = body.get("userSymmetricKey", "")
+    user_asymmetric_keys = body.get("userAsymmetricKeys", {})
+    public_key = user_asymmetric_keys.get("publicKey", "")
+    encrypted_private_key = user_asymmetric_keys.get("encryptedPrivateKey", "")
+    kdf = body.get("kdf", 1)
+    kdf_iterations = body.get("kdfIterations", 600000)
+    kdf_memory = body.get("kdfMemory")
+    kdf_parallelism = body.get("kdfParallelism")
+
+    if not email or not master_hash:
+        raise HTTPException(400, "Email and master password are required")
+
+    user_id = str(uuid.uuid4())
+    security_stamp = str(uuid.uuid4())
+    now = utcnow()
+
+    with get_db() as db:
+        existing = db.execute("SELECT id FROM accounts WHERE email=?", (email,)).fetchone()
+        if existing:
+            raise HTTPException(400, "Email already registered")
+
+        db.execute("""
+            INSERT INTO accounts (id, email, master_password_hash, master_password_hint,
+                security_stamp, key, public_key, encrypted_private_key,
+                kdf, kdf_iterations, kdf_memory, kdf_parallelism, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, email, master_hash, hint, security_stamp, user_symmetric_key,
+              public_key, encrypted_private_key, kdf, kdf_iterations,
+              kdf_memory, kdf_parallelism, now, now))
+
+    log.info(f"Account registered: {email}")
+    return Response(status_code=200)
+
+# Legacy registration endpoint (kept for compatibility)
+@app.post("/accounts/register")
+async def register_legacy(request: Request):
     body = await request.json()
     email = body.get("email", "").lower().strip()
     master_hash = body.get("masterPasswordHash", "")
@@ -302,14 +356,15 @@ async def register(request: Request):
               public_key, encrypted_private_key, kdf, kdf_iterations,
               kdf_memory, kdf_parallelism, now, now))
 
-    log.info(f"Account registered: {email}")
+    log.info(f"Account registered (legacy): {email}")
     return Response(status_code=200)
 
 # ---------------------------------------------------------------------------
 # Login (Token)
+# Extension sends: POST /connect/token (via identity URL)
 # ---------------------------------------------------------------------------
 
-@app.post("/identity/connect/token")
+@app.post("/connect/token")
 async def login(request: Request):
     content_type = request.headers.get("content-type", "")
 
@@ -375,14 +430,15 @@ async def login(request: Request):
 
 # ---------------------------------------------------------------------------
 # Account Profile
+# Extension sends: GET/PUT /accounts/profile (via api URL)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/accounts/profile")
+@app.get("/accounts/profile")
 async def get_profile(request: Request):
     user = get_current_user(request)
     return _build_profile(user)
 
-@app.put("/api/accounts/profile")
+@app.put("/accounts/profile")
 async def update_profile(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -421,9 +477,10 @@ def _build_profile(user: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # Account Keys
+# Extension sends: POST /accounts/keys, /accounts/key (via api URL)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/accounts/keys")
+@app.post("/accounts/keys")
 async def set_keys(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -436,7 +493,7 @@ async def set_keys(request: Request):
 
     return Response(status_code=200)
 
-@app.post("/api/accounts/key")
+@app.post("/accounts/key")
 async def set_user_key(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -448,7 +505,7 @@ async def set_user_key(request: Request):
 
     return Response(status_code=200)
 
-@app.post("/api/accounts/password")
+@app.post("/accounts/password")
 async def change_password(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -468,7 +525,7 @@ async def change_password(request: Request):
 
     return Response(status_code=200)
 
-@app.post("/api/accounts/kdf")
+@app.post("/accounts/kdf")
 async def change_kdf(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -490,7 +547,7 @@ async def change_kdf(request: Request):
 
     return Response(status_code=200)
 
-@app.post("/api/accounts/verify-password")
+@app.post("/accounts/verify-password")
 async def verify_password(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -499,10 +556,9 @@ async def verify_password(request: Request):
         return Response(status_code=200)
     raise HTTPException(400, "Invalid password")
 
-@app.get("/api/accounts/revision-date")
+@app.get("/accounts/revision-date")
 async def revision_date(request: Request):
     user = get_current_user(request)
-    # Return latest update time across account and ciphers
     with get_db() as db:
         row = db.execute("""
             SELECT MAX(ts) as latest FROM (
@@ -514,7 +570,6 @@ async def revision_date(request: Request):
             )
         """, (user["id"], user["id"], user["id"])).fetchone()
     ts = row["latest"] if row and row["latest"] else user["updated_at"]
-    # Return as milliseconds timestamp
     try:
         dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
         return Response(content=str(int(dt.timestamp() * 1000)), media_type="text/plain")
@@ -523,9 +578,10 @@ async def revision_date(request: Request):
 
 # ---------------------------------------------------------------------------
 # Sync
+# Extension sends: GET /sync (via api URL)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/sync")
+@app.get("/sync")
 async def sync(request: Request):
     user = get_current_user(request)
 
@@ -558,38 +614,56 @@ async def sync(request: Request):
 
 # ---------------------------------------------------------------------------
 # Ciphers (CRUD)
+# Extension sends: POST/PUT/DELETE /ciphers/... (via api URL)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/ciphers")
+@app.post("/ciphers")
 async def create_cipher(request: Request):
     user = get_current_user(request)
     body = await request.json()
     return _upsert_cipher(user["id"], None, body)
 
-@app.post("/api/ciphers/create")
+@app.post("/ciphers/create")
 async def create_cipher_alt(request: Request):
     user = get_current_user(request)
     body = await request.json()
-    # Some clients send { cipher: {...}, collectionIds: [...] }
     cipher_data = body.get("cipher", body)
     return _upsert_cipher(user["id"], None, cipher_data)
 
-@app.put("/api/ciphers/{cipher_id}")
-@app.post("/api/ciphers/{cipher_id}")
+@app.put("/ciphers/{cipher_id}")
+@app.post("/ciphers/{cipher_id}")
 async def update_cipher(cipher_id: str, request: Request):
     user = get_current_user(request)
     body = await request.json()
     return _upsert_cipher(user["id"], cipher_id, body)
 
-@app.delete("/api/ciphers/{cipher_id}")
+@app.get("/ciphers/{cipher_id}")
+async def get_cipher(cipher_id: str, request: Request):
+    user = get_current_user(request)
+    with get_db() as db:
+        row = db.execute("SELECT * FROM ciphers WHERE id=? AND user_id=?",
+                         (cipher_id, user["id"])).fetchone()
+    if not row:
+        raise HTTPException(404, "Cipher not found")
+    return _build_cipher(dict(row))
+
+@app.get("/ciphers/{cipher_id}/details")
+async def get_cipher_details(cipher_id: str, request: Request):
+    return await get_cipher(cipher_id, request)
+
+@app.get("/ciphers/{cipher_id}/admin")
+async def get_cipher_admin(cipher_id: str, request: Request):
+    return await get_cipher(cipher_id, request)
+
+@app.delete("/ciphers/{cipher_id}")
 async def hard_delete_cipher(cipher_id: str, request: Request):
     user = get_current_user(request)
     with get_db() as db:
         db.execute("DELETE FROM ciphers WHERE id=? AND user_id=?", (cipher_id, user["id"]))
     return Response(status_code=200)
 
-@app.put("/api/ciphers/{cipher_id}/delete")
-@app.post("/api/ciphers/{cipher_id}/delete")
+@app.put("/ciphers/{cipher_id}/delete")
+@app.post("/ciphers/{cipher_id}/delete")
 async def soft_delete_cipher(cipher_id: str, request: Request):
     user = get_current_user(request)
     with get_db() as db:
@@ -597,7 +671,7 @@ async def soft_delete_cipher(cipher_id: str, request: Request):
                    (utcnow(), utcnow(), cipher_id, user["id"]))
     return Response(status_code=200)
 
-@app.put("/api/ciphers/{cipher_id}/restore")
+@app.put("/ciphers/{cipher_id}/restore")
 async def restore_cipher(cipher_id: str, request: Request):
     user = get_current_user(request)
     with get_db() as db:
@@ -609,7 +683,22 @@ async def restore_cipher(cipher_id: str, request: Request):
         raise HTTPException(404, "Cipher not found")
     return _build_cipher(dict(row))
 
-@app.put("/api/ciphers/{cipher_id}/favorite")
+@app.put("/ciphers/{cipher_id}/partial")
+async def partial_update_cipher(cipher_id: str, request: Request):
+    user = get_current_user(request)
+    body = await request.json()
+    folder_id = body.get("folderId")
+    favorite = 1 if body.get("favorite", False) else 0
+    with get_db() as db:
+        db.execute("UPDATE ciphers SET folder_id=?, favorite=?, updated_at=? WHERE id=? AND user_id=?",
+                   (folder_id, favorite, utcnow(), cipher_id, user["id"]))
+        row = db.execute("SELECT * FROM ciphers WHERE id=? AND user_id=?",
+                         (cipher_id, user["id"])).fetchone()
+    if not row:
+        raise HTTPException(404, "Cipher not found")
+    return _build_cipher(dict(row))
+
+@app.put("/ciphers/{cipher_id}/favorite")
 async def toggle_favorite(cipher_id: str, request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -619,7 +708,7 @@ async def toggle_favorite(cipher_id: str, request: Request):
                    (fav, utcnow(), cipher_id, user["id"]))
     return Response(status_code=200)
 
-@app.post("/api/ciphers/purge")
+@app.post("/ciphers/purge")
 async def purge_ciphers(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -630,7 +719,7 @@ async def purge_ciphers(request: Request):
         db.execute("DELETE FROM ciphers WHERE user_id=?", (user["id"],))
     return Response(status_code=200)
 
-@app.post("/api/ciphers/import")
+@app.post("/ciphers/import")
 async def import_ciphers(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -640,7 +729,6 @@ async def import_ciphers(request: Request):
     ciphers_data = body.get("ciphers", [])
     folder_relationships = body.get("folderRelationships", [])
 
-    # Create folders first, mapping index -> id
     folder_id_map = {}
     with get_db() as db:
         for i, f in enumerate(folders_data):
@@ -649,7 +737,6 @@ async def import_ciphers(request: Request):
             db.execute("INSERT INTO folders (id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                        (fid, user["id"], f.get("name", ""), now, now))
 
-        # Create ciphers with folder assignments
         cipher_folder_map = {r.get("key", r.get("Key", -1)): r.get("value", r.get("Value", -1))
                              for r in folder_relationships}
 
@@ -674,11 +761,18 @@ async def import_ciphers(request: Request):
     log.info(f"Imported {len(ciphers_data)} ciphers, {len(folders_data)} folders")
     return Response(status_code=200)
 
+@app.post("/ciphers/{cipher_id}/collections")
+async def set_cipher_collections(cipher_id: str, request: Request):
+    return Response(status_code=200)
+
+@app.post("/ciphers/{cipher_id}/collections-admin")
+async def set_cipher_collections_admin(cipher_id: str, request: Request):
+    return Response(status_code=200)
+
 def _extract_cipher_data(body: dict) -> dict:
-    """Extract encrypted cipher fields into a storable JSON blob."""
     data = {}
     for field in ["name", "notes", "login", "card", "identity", "secureNote",
-                  "fields", "passwordHistory", "attachments", "reprompt"]:
+                  "fields", "passwordHistory", "attachments", "reprompt", "key"]:
         if field in body:
             data[field] = body[field]
     return data
@@ -694,7 +788,6 @@ def _upsert_cipher(user_id: str, cipher_id: str | None, body: dict) -> dict:
 
     with get_db() as db:
         if cipher_id:
-            # Update
             db.execute("""
                 UPDATE ciphers SET folder_id=?, organization_id=?, type=?, data=?,
                     favorite=?, reprompt=?, updated_at=?
@@ -703,7 +796,6 @@ def _upsert_cipher(user_id: str, cipher_id: str | None, body: dict) -> dict:
                   cipher_id, user_id))
             row = db.execute("SELECT * FROM ciphers WHERE id=?", (cipher_id,)).fetchone()
         else:
-            # Create
             cipher_id = str(uuid.uuid4())
             db.execute("""
                 INSERT INTO ciphers (id, user_id, folder_id, organization_id, type, data,
@@ -734,6 +826,7 @@ def _build_cipher(row: dict) -> dict:
         "fields": data.get("fields"),
         "passwordHistory": data.get("passwordHistory"),
         "attachments": data.get("attachments"),
+        "key": data.get("key"),
         "favorite": bool(row["favorite"]),
         "reprompt": row["reprompt"],
         "organizationUseTotp": False,
@@ -748,9 +841,10 @@ def _build_cipher(row: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # Folders (CRUD)
+# Extension sends: POST/PUT/DELETE /folders/... (via api URL)
 # ---------------------------------------------------------------------------
 
-@app.post("/api/folders")
+@app.post("/folders")
 async def create_folder(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -765,7 +859,7 @@ async def create_folder(request: Request):
 
     return _build_folder(dict(row))
 
-@app.put("/api/folders/{folder_id}")
+@app.put("/folders/{folder_id}")
 async def update_folder(folder_id: str, request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -781,11 +875,10 @@ async def update_folder(folder_id: str, request: Request):
         raise HTTPException(404, "Folder not found")
     return _build_folder(dict(row))
 
-@app.delete("/api/folders/{folder_id}")
+@app.delete("/folders/{folder_id}")
 async def delete_folder(folder_id: str, request: Request):
     user = get_current_user(request)
     with get_db() as db:
-        # Unlink ciphers from this folder
         db.execute("UPDATE ciphers SET folder_id=NULL, updated_at=? WHERE folder_id=? AND user_id=?",
                    (utcnow(), folder_id, user["id"]))
         db.execute("DELETE FROM folders WHERE id=? AND user_id=?", (folder_id, user["id"]))
@@ -803,22 +896,19 @@ def _build_folder(row: dict) -> dict:
 # Organizations / Collections / Sends (stubs)
 # ---------------------------------------------------------------------------
 
-@app.get("/api/organizations")
+@app.get("/organizations")
 async def list_organizations(request: Request):
-    get_current_user(request)
     return {"object": "list", "data": [], "continuationToken": None}
 
-@app.get("/api/collections")
+@app.get("/collections")
 async def list_collections(request: Request):
-    get_current_user(request)
     return {"object": "list", "data": [], "continuationToken": None}
 
-@app.get("/api/sends")
+@app.get("/sends")
 async def list_sends(request: Request):
-    get_current_user(request)
     return {"object": "list", "data": [], "continuationToken": None}
 
-@app.get("/api/organizations/{org_id}/auto-enroll-status")
+@app.get("/organizations/{org_id}/auto-enroll-status")
 async def org_auto_enroll(org_id: str, request: Request):
     return {"resetPasswordEnabled": False}
 
@@ -826,25 +916,23 @@ async def org_auto_enroll(org_id: str, request: Request):
 # Settings / Config stubs
 # ---------------------------------------------------------------------------
 
-@app.get("/api/settings/domains")
+@app.get("/settings/domains")
 async def get_domains(request: Request):
-    get_current_user(request)
     return {
         "object": "domains",
         "equivalentDomains": [],
         "globalEquivalentDomains": [],
     }
 
-@app.put("/api/settings/domains")
+@app.put("/settings/domains")
 async def set_domains(request: Request):
-    get_current_user(request)
     return Response(status_code=200)
 
-@app.get("/api/devices/identifier/{identifier}/type/{device_type}")
+@app.get("/devices/identifier/{identifier}/type/{device_type}")
 async def get_device_by_identifier(identifier: str, device_type: str, request: Request):
     raise HTTPException(404, "Device not found")
 
-@app.get("/api/config")
+@app.get("/config")
 async def get_config(request: Request):
     return {
         "object": "config",
@@ -863,24 +951,21 @@ async def get_config(request: Request):
     }
 
 # ---------------------------------------------------------------------------
-# Events / HIBP stubs
+# Account management stubs
 # ---------------------------------------------------------------------------
 
-@app.post("/api/ciphers/{cipher_id}/collections")
-async def set_cipher_collections(cipher_id: str, request: Request):
-    return Response(status_code=200)
-
-@app.post("/api/accounts/api-key")
+@app.post("/accounts/api-key")
 async def get_api_key(request: Request):
-    user = get_current_user(request)
+    get_current_user(request)
     return {"apiKey": uuid.uuid4().hex}
 
-@app.post("/api/accounts/rotate-api-key")
+@app.post("/accounts/rotate-api-key")
 async def rotate_api_key(request: Request):
-    user = get_current_user(request)
+    get_current_user(request)
     return {"apiKey": uuid.uuid4().hex}
 
-@app.post("/api/accounts/delete")
+@app.post("/accounts/delete")
+@app.delete("/accounts")
 async def delete_account(request: Request):
     user = get_current_user(request)
     body = await request.json()
@@ -894,10 +979,24 @@ async def delete_account(request: Request):
         db.execute("DELETE FROM accounts WHERE id=?", (user["id"],))
     return Response(status_code=200)
 
+@app.post("/accounts/verify-devices")
+async def verify_devices(request: Request):
+    return Response(status_code=200)
+
+# Events (no-op)
 @app.post("/collect")
-@app.post("/api/events/collect")
+@app.post("/events/collect")
 async def collect_events(request: Request):
     return Response(status_code=200)
+
+# Auth requests (stubs for 2FA flow)
+@app.get("/auth-requests")
+async def list_auth_requests(request: Request):
+    return {"object": "list", "data": [], "continuationToken": None}
+
+@app.get("/auth-requests/{request_id}")
+async def get_auth_request(request_id: str, request: Request):
+    raise HTTPException(404, "Not found")
 
 # ---------------------------------------------------------------------------
 # Catch-all for unimplemented endpoints
@@ -906,7 +1005,6 @@ async def collect_events(request: Request):
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def catch_all(path: str, request: Request):
     log.debug(f"Unhandled: {request.method} /{path}")
-    # Return empty success for most unhandled routes
     if request.method == "GET":
         return {"object": "list", "data": [], "continuationToken": None}
     return Response(status_code=200)
@@ -916,7 +1014,6 @@ async def catch_all(path: str, request: Request):
 # =============================================================================
 
 def create_tray_icon() -> Image.Image:
-    """Generate VaultBox tray icon programmatically."""
     size = 64
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -954,7 +1051,7 @@ def start_tray(shutdown_event: threading.Event):
         os.startfile(vault_path)
 
     menu = pystray.Menu(
-        pystray.MenuItem(f"VaultBox Server v0.1.0", None, enabled=False),
+        pystray.MenuItem(f"VaultBox Server v0.2.0", None, enabled=False),
         pystray.MenuItem(f"http://{HOST}:{PORT}", None, enabled=False),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Open Data Folder", on_open_vault),
