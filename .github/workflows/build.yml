@@ -18,34 +18,61 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          python-version: '3.12'
+          arch: amd64
 
-      - name: Install dependencies
+      - name: Download WebView2 SDK
+        shell: pwsh
         run: |
-          pip install -r server/requirements.txt
-          pip install pyinstaller
+          nuget install Microsoft.Web.WebView2 -Version 1.0.2903.40 -OutputDirectory wv2
+          $src = "wv2/Microsoft.Web.WebView2.1.0.2903.40/build/native"
+          New-Item -ItemType Directory -Force -Path server/cpp/deps/webview2 | Out-Null
+          Copy-Item "$src/include/*" server/cpp/deps/webview2/
+          Copy-Item "$src/x64/WebView2LoaderStatic.lib" server/cpp/deps/webview2/
 
-      - name: Build server executable
+      - name: Compile sqlite3
+        working-directory: server/cpp
+        run: cl /nologo /O2 /c sqlite3.c /Fo:sqlite3.obj
+
+      - name: Compile resource
+        working-directory: server/cpp
+        run: rc /nologo vaultbox.rc
+
+      - name: Build VaultBox
+        working-directory: server/cpp
         run: |
-          cd server
-          pyinstaller vaultbox_server.spec
+          cl /EHsc /O2 /std:c++17 /bigobj /DWIN32_LEAN_AND_MEAN /DNOMINMAX /I"deps\webview2" vaultbox_server.cpp sqlite3.obj vaultbox.res "deps\webview2\WebView2LoaderStatic.lib" /Fe:VaultBox-Server.exe /nologo /link ws2_32.lib bcrypt.lib rpcrt4.lib shell32.lib user32.lib gdi32.lib advapi32.lib comctl32.lib dwmapi.lib uxtheme.lib comdlg32.lib ole32.lib
+
+      - name: Build installer
+        working-directory: server/cpp
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer.iss
 
       - name: Upload server artifact
         uses: actions/upload-artifact@v4
         with:
           name: VaultBox-Server
-          path: server/dist/VaultBox-Server.exe
+          path: server/cpp/VaultBox-Server.exe
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VaultBox-Installer
+          path: server/cpp/Output/VaultBox-Setup-*.exe
 
       - name: Upload to release
         if: github.event_name == 'release' || github.event.inputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
         run: |
           $tag = if ("${{ github.event_name }}" -eq "release") { "${{ github.event.release.tag_name }}" } else { "${{ github.event.inputs.tag }}" }
           if ($tag) {
-            gh release upload $tag server/dist/VaultBox-Server.exe --clobber
+            gh release upload $tag server/cpp/VaultBox-Server.exe --clobber
+            gh release upload $tag (Get-Item server/cpp/Output/VaultBox-Setup-*.exe) --clobber
           }
 
   build-extensions:
@@ -100,9 +127,6 @@ jobs:
             TAG="${{ github.event.inputs.tag }}"
           fi
           if [ -n "$TAG" ]; then
-            mv VaultBox-chrome.zip "VaultBox-${TAG}-chrome.zip"
-            mv VaultBox-firefox.zip "VaultBox-${TAG}-firefox.zip"
-            gh release upload "$TAG" "VaultBox-${TAG}-chrome.zip" --clobber
-            gh release upload "$TAG" "VaultBox-${TAG}-firefox.zip" --clobber
-            gh release upload "$TAG" Install-VaultBox.ps1 --clobber
+            gh release upload "$TAG" VaultBox-chrome.zip --clobber
+            gh release upload "$TAG" VaultBox-firefox.zip --clobber
           fi
