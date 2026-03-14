@@ -101,12 +101,14 @@ export class LoginComponent implements OnInit, OnDestroy {
   orgPoliciesFromInvite: PasswordPolicies | null = null;
   LoginUiState = LoginUiState;
   isKnownDevice = false;
-  loginUiState: LoginUiState = LoginUiState.EMAIL_ENTRY;
+  // VaultBox: Skip email entry, go straight to master password
+  loginUiState: LoginUiState = LoginUiState.MASTER_PASSWORD_ENTRY;
   ssoRequired = false;
 
   formGroup = this.formBuilder.group(
     {
-      email: ["", [Validators.required, Validators.email]],
+      // VaultBox: Pre-fill with local placeholder email (hidden from user)
+      email: ["vault@localhost", [Validators.required, Validators.email]],
       masterPassword: [
         "",
         [Validators.required, Validators.minLength(Utils.originalMinimumPasswordLength)],
@@ -177,39 +179,24 @@ export class LoginComponent implements OnInit, OnDestroy {
   }
 
   private async defaultOnInit(): Promise<void> {
-    let paramEmailIsSet = false;
+    // VaultBox: Skip email entry entirely, use local placeholder email
+    // and go straight to master password entry
+    this.formGroup.controls.email.setValue("vault@localhost");
+    this.loginUiState = LoginUiState.MASTER_PASSWORD_ENTRY;
 
-    const params = await firstValueFrom(this.activatedRoute.queryParams);
+    this.anonLayoutWrapperDataService.setAnonLayoutWrapperData({
+      pageTitle: { key: "logInToBitwarden" },
+      pageIcon: this.Icons.VaultIcon,
+    });
 
-    if (params) {
-      const qParamsEmail = params.email;
-
-      // If there is an email in the query params, set that email as the form field value
-      if (qParamsEmail != null && qParamsEmail.indexOf("@") > -1) {
-        this.formGroup.controls.email.setValue(qParamsEmail);
-        paramEmailIsSet = true;
-      }
+    // Focus master password input when stable
+    if (this.ngZone.isStable) {
+      this.masterPasswordInputRef?.nativeElement?.focus();
+    } else {
+      this.ngZone.onStable.pipe(take(1), takeUntil(this.destroy$)).subscribe(() => {
+        this.masterPasswordInputRef?.nativeElement?.focus();
+      });
     }
-
-    // If there are no params or no email in the query params, loadEmailSettings from state
-    if (!paramEmailIsSet) {
-      await this.loadRememberedEmail();
-    }
-
-    // Check to see if the device is known so that we can show the Login with Device option
-    if (this.emailFormControl.value) {
-      await this.getKnownDevice(this.emailFormControl.value);
-    }
-
-    // Backup check to handle unknown case where activatedRoute is not available
-    // This shouldn't happen under normal circumstances
-    if (!this.activatedRoute) {
-      await this.loadRememberedEmail();
-    }
-
-    // This SSO required check should come after email has had a chance to be pre-filled (if it
-    // was found in query params or was the remembered email)
-    await this.determineIfSsoRequired();
   }
 
   private async desktopOnInit(): Promise<void> {

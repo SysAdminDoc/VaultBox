@@ -25,7 +25,6 @@ import {
 } from "@bitwarden/components";
 
 import { LoginEmailService } from "../../../common";
-import { RegistrationEnvSelectorComponent } from "../registration-env-selector/registration-env-selector.component";
 
 // FIXME: update to use a const object instead of a typescript enum
 // eslint-disable-next-line @bitwarden/platform/no-enums
@@ -55,7 +54,6 @@ const DEFAULT_MARKETING_EMAILS_PREF_BY_REGION: Record<Region, boolean> = {
     ButtonModule,
     LinkModule,
     SvgModule,
-    RegistrationEnvSelectorComponent,
   ],
 })
 export class RegistrationStartComponent implements OnInit, OnDestroy {
@@ -105,19 +103,12 @@ export class RegistrationStartComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit() {
-    // Emit the initial state
-    this.registrationStartStateChange.emit(this.state);
-
-    this.listenForQueryParamChanges();
-
-    /**
-     * If the user has a login email, set the email field to the login email.
-     */
-    this.loginEmailService.loginEmail$.pipe(takeUntil(this.destroy$)).subscribe((email) => {
-      if (email) {
-        this.formGroup.patchValue({ email });
-      }
+    // VaultBox: Skip email entry entirely, go straight to password setup
+    // with a local placeholder email
+    await this.router.navigate(["/finish-signup"], {
+      queryParams: { token: "vaultbox-local", email: "vault@localhost" },
     });
+    return;
   }
 
   private listenForQueryParamChanges() {

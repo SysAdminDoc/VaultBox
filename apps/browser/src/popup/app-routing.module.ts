@@ -427,16 +427,11 @@ const routes: Routes = [
             key: "logInToBitwarden",
           },
           elevation: 1,
-          showAcctSwitcher: true,
+          showAcctSwitcher: false,
         } satisfies RouteDataProperties & ExtensionAnonLayoutWrapperData,
         children: [
           { path: "", component: LoginComponent },
           { path: "", component: LoginSecondaryContentComponent, outlet: "secondary" },
-          {
-            path: "",
-            component: EnvironmentSelectorComponent,
-            outlet: "environment-selector",
-          },
         ],
       },
       {

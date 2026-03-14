@@ -99,21 +99,23 @@ export class RegistrationFinishComponent implements OnInit, OnDestroy {
     const qParams = await firstValueFrom(this.activatedRoute.queryParams);
     this.handleQueryParams(qParams);
 
-    if (
-      qParams.fromEmail &&
-      qParams.fromEmail === "true" &&
-      this.email &&
-      this.emailVerificationToken
-    ) {
-      await this.initEmailVerificationFlow();
-    } else {
-      // Org Invite flow OR registration with email verification disabled Flow
-      const orgInviteFlow = await this.initOrgInviteFlowIfPresent();
-
-      if (!orgInviteFlow) {
-        this.initRegistrationWithEmailVerificationDisabledFlow();
-      }
+    // VaultBox: Always use vault@localhost, skip email verification
+    if (!this.email) {
+      this.email = "vault@localhost";
     }
+    if (!this.emailVerificationToken) {
+      this.emailVerificationToken = "vaultbox-local";
+    }
+
+    // Set page title for vault creation
+    this.anonLayoutWrapperDataService.setAnonLayoutWrapperData({
+      pageTitle: {
+        key: "setAStrongPassword",
+      },
+      pageSubtitle: {
+        key: "finishCreatingYourAccountBySettingAPassword",
+      },
+    });
 
     this.loading = false;
   }
@@ -218,7 +220,8 @@ export class RegistrationFinishComponent implements OnInit, OnDestroy {
         );
       }
 
-      await this.router.navigate(["/vault"]);
+      // VaultBox: Navigate to import page so user can import their passwords
+      await this.router.navigate(["/import"]);
     } catch (e) {
       // If login errors, redirect to login page per product. Don't show error
       this.logService.error("Error logging in after registration: ", e.message);
