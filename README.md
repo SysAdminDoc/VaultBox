@@ -1,6 +1,6 @@
 # VaultBox - Local Password Manager
 
-A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's browser extension that stores everything locally on your computer. No cloud servers, no accounts to create online, no telemetry.
+A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's browser extension that stores everything in an encrypted local file on your computer. No cloud servers, no accounts to create online, no telemetry.
 
 ## Quick Install (Windows)
 
@@ -8,68 +8,70 @@ A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's br
 irm https://github.com/SysAdminDoc/VaultBox/releases/latest/download/Install-VaultBox.ps1 -OutFile Install-VaultBox.ps1; .\Install-VaultBox.ps1
 ```
 
-No prerequisites needed. The installer handles everything automatically - including Python, the local server, and browser extension setup.
+No prerequisites needed. Single .exe + browser extension. Nothing to install first.
 
 Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox/releases/latest):
 
-| Asset                         | Description                                  |
-| ----------------------------- | -------------------------------------------- |
-| `Install-VaultBox.ps1`        | One-click GUI installer (recommended)        |
-| `VaultBox-v0.1.0-chrome.zip`  | Chrome/Edge/Brave extension (manual install) |
-| `VaultBox-v0.1.0-firefox.zip` | Firefox extension (manual install)           |
+| Asset                  | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `Install-VaultBox.ps1` | One-click GUI installer (recommended)        |
+| `VaultBox-Server.exe`  | Standalone server (no Python needed)         |
+| `VaultBox-chrome.zip`  | Chrome/Edge/Brave extension (manual install) |
+| `VaultBox-firefox.zip` | Firefox extension (manual install)           |
 
 ## What This Is
 
 VaultBox gives you Bitwarden's full password management experience (autofill, search, password generation, TOTP) while keeping everything on your machine. Think of it as **KeePass with browser autofill and a modern UI**.
 
-The extension talks to a lightweight local server running on `127.0.0.1:8787` instead of Bitwarden's cloud. Your passwords never leave your device.
+Your passwords are stored in an encrypted local file (`vault.db`) just like KeePass stores passwords in a `.kdbx` file. Copy it to a USB drive for backup or transfer between machines.
 
 ## Architecture
 
 ```text
 +-------------------+          +----------------------+          +------------------+
-|  Browser Extension | <------> |  VaultBox Server     | <------> |  SQLite Database |
-|  (Bitwarden UI)   |  HTTP    |  127.0.0.1:8787      |          |  vault.db        |
+|  Browser Extension | <------> |  VaultBox-Server.exe | <------> |  vault.db        |
+|  (Bitwarden UI)   |  HTTP    |  127.0.0.1:8787      |          |  Encrypted vault |
 +-------------------+  only    +----------------------+          +------------------+
-                      localhost   Python + FastAPI                 %LOCALAPPDATA%\VaultBox\
+                      localhost   Single .exe                      %LOCALAPPDATA%\VaultBox\
                                   System tray icon
 ```
 
 - **Extension** = Standard Bitwarden browser extension pointed at localhost
-- **Server** = Bitwarden-compatible API running locally (never binds to network interfaces)
-- **Database** = SQLite storing encrypted vault data on disk
+- **Server** = Single .exe running in your system tray (like KeePass sits in the tray)
+- **Vault** = Encrypted SQLite file on disk, just like a KeePass .kdbx file
 
 All encryption/decryption happens in the extension (client-side). The server only stores already-encrypted data. This matches Bitwarden's zero-knowledge architecture.
 
 ## Key Features
 
+- **Single Encrypted File** - Your vault is one file (`vault.db`). Copy it, back it up, move it between PCs.
 - **Localhost Only** - Server binds to `127.0.0.1:8787`. No external network access. No DNS lookups.
-- **Local Vault Storage** - Encrypted vault data stored in SQLite at `%LOCALAPPDATA%\VaultBox\vault.db`.
 - **Full Autofill** - Login, credit card, identity, and FIDO2 autofill works exactly like standard Bitwarden.
 - **Password Generator** - Fully client-side password and passphrase generation.
 - **TOTP Codes** - Time-based one-time passwords generated locally.
 - **System Tray** - Server runs in the system tray with status indicator and quick access to data folder.
 - **Auto-Start** - Server starts automatically on Windows login.
 - **No Telemetry** - Event collection, usage analytics, and crash reporting are completely removed.
-- **No Prerequisites** - Installer auto-downloads portable Python if needed. Nothing to install first.
+- **No Prerequisites** - Single .exe, no Python/Java/runtime needed.
 
 ## How It Works
 
 1. **Install** - Run `Install-VaultBox.ps1` (one click)
-2. **Server starts** - VaultBox Server runs in the system tray on `127.0.0.1:8787`
+2. **Server starts** - `VaultBox-Server.exe` runs in the system tray
 3. **Create account** - Open the extension, register with email + master password (stored locally)
 4. **Use normally** - Add passwords, autofill, generate passwords, organize with folders
-5. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS for backup
+5. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS (just like backing up a KeePass file)
 
 ## VaultBox vs KeePass vs Bitwarden
 
 | Feature            | KeePass              | VaultBox              | Bitwarden         |
 | ------------------ | -------------------- | --------------------- | ----------------- |
-| Storage            | Local .kdbx file     | Local SQLite          | Cloud             |
+| Storage            | Local .kdbx file     | Local .db file        | Cloud             |
 | Browser Autofill   | Via plugins (clunky) | Native (built-in)     | Native (built-in) |
 | UI                 | Desktop-era          | Modern (Bitwarden UI) | Modern            |
 | Password Generator | Yes                  | Yes                   | Yes               |
 | TOTP               | Via plugins          | Built-in              | Built-in (paid)   |
+| Install Complexity | Download + plugins   | One-click installer   | Account + install |
 | Multi-device Sync  | Manual file copy     | Manual file copy      | Automatic         |
 | Internet Required  | No                   | No                    | Yes               |
 | Open Source        | Yes                  | Yes                   | Yes               |
@@ -80,7 +82,8 @@ All encryption/decryption happens in the extension (client-side). The server onl
 
 - Node.js v22 (check `.nvmrc`)
 - npm
-- Python 3.10+ (for the server)
+- Python 3.10+ (for the server, only needed for development)
+- PyInstaller (to build the .exe)
 
 ### Build the Extension
 
@@ -98,7 +101,17 @@ npm run build:chrome
 npm run build:firefox
 ```
 
-### Run the Server
+### Build the Server .exe
+
+```bash
+cd server
+pip install -r requirements.txt
+pip install pyinstaller
+pyinstaller vaultbox_server.spec
+# Output: server/dist/VaultBox-Server.exe
+```
+
+### Run the Server (Development)
 
 ```bash
 cd server
@@ -158,7 +171,8 @@ All other Bitwarden API endpoints return safe defaults (empty lists, 200 OK).
 ### Server
 
 - `server/vaultbox_server.py` - Local Bitwarden-compatible API server (FastAPI + SQLite + system tray)
-- `server/requirements.txt` - Python dependencies
+- `server/vaultbox_server.spec` - PyInstaller spec for building standalone .exe
+- `server/requirements.txt` - Python dependencies (development only)
 
 ### Extension Modifications
 
@@ -172,8 +186,8 @@ All other Bitwarden API endpoints return safe defaults (empty lists, 200 OK).
 
 ## Limitations
 
-- **No Multi-Device Sync** - By design. Copy the SQLite database to transfer vaults between machines.
-- **No Account Recovery** - No server to recover your account. Back up your database and remember your master password.
+- **No Multi-Device Sync** - By design. Copy `vault.db` to transfer vaults between machines (like KeePass).
+- **No Account Recovery** - No server to recover your account. Back up your vault file and remember your master password.
 - **No Organization Features** - Organization sharing requires a cloud server. Personal vault only.
 - **No Breach Reports** - HIBP password checking requires external network access.
 - **No Emergency Access** - Requires cloud-side trusted contacts feature.

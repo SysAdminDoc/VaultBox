@@ -1,0 +1,108 @@
+name: Build VaultBox
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to attach artifacts to (optional)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-server:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r server/requirements.txt
+          pip install pyinstaller
+
+      - name: Build server executable
+        run: |
+          cd server
+          pyinstaller vaultbox_server.spec
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VaultBox-Server
+          path: server/dist/VaultBox-Server.exe
+
+      - name: Upload to release
+        if: github.event_name == 'release' || github.event.inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = if ("${{ github.event_name }}" -eq "release") { "${{ github.event.release.tag_name }}" } else { "${{ github.event.inputs.tag }}" }
+          if ($tag) {
+            gh release upload $tag server/dist/VaultBox-Server.exe --clobber
+          }
+
+  build-extensions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Chrome extension
+        run: |
+          cd apps/browser
+          npm run build:chrome
+
+      - name: Package Chrome extension
+        run: |
+          cd apps/browser/build
+          zip -r ../../../VaultBox-chrome.zip .
+
+      - name: Build Firefox extension
+        run: |
+          cd apps/browser
+          npm run build:firefox
+
+      - name: Package Firefox extension
+        run: |
+          cd apps/browser/build
+          zip -r ../../../VaultBox-firefox.zip .
+
+      - name: Upload extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VaultBox-Extensions
+          path: |
+            VaultBox-chrome.zip
+            VaultBox-firefox.zip
+
+      - name: Upload to release
+        if: github.event_name == 'release' || github.event.inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=""
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          else
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          if [ -n "$TAG" ]; then
+            mv VaultBox-chrome.zip "VaultBox-${TAG}-chrome.zip"
+            mv VaultBox-firefox.zip "VaultBox-${TAG}-firefox.zip"
+            gh release upload "$TAG" "VaultBox-${TAG}-chrome.zip" --clobber
+            gh release upload "$TAG" "VaultBox-${TAG}-firefox.zip" --clobber
+            gh release upload "$TAG" Install-VaultBox.ps1 --clobber
+          fi

@@ -1,6 +1,6 @@
-# VaultBox Installer v0.2.0
+# VaultBox Installer v0.3.0
 # One-click installer for VaultBox offline password manager
-# No prerequisites required - installs everything automatically
+# No prerequisites required - single exe + browser extension
 
 param(
     [switch]$Uninstall
@@ -26,8 +26,7 @@ Add-Type -AssemblyName WindowsBase
 $script:InstallDir = "$env:LOCALAPPDATA\VaultBox"
 $script:ReleaseUrl = "https://github.com/SysAdminDoc/VaultBox/releases/latest/download"
 $script:ScriptDir = Split-Path -Parent $PSCommandPath
-$script:PythonVersion = "3.12.8"
-$script:PythonEmbedUrl = "https://www.python.org/ftp/python/$($script:PythonVersion)/python-$($script:PythonVersion)-embed-amd64.zip"
+$script:ServerExeName = "VaultBox-Server.exe"
 
 # --- Browser Detection ---
 function Get-BrowserExe([string]$key) {
@@ -70,11 +69,11 @@ function Get-BrowserExe([string]$key) {
 }
 
 $script:BrowserDefs = @(
-    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-v0.2.0-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-v0.2.0-firefox.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
+    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-firefox.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
 )
 
 foreach ($b in $script:BrowserDefs) {
@@ -183,13 +182,13 @@ $xaml = @'
             <StackPanel>
                 <TextBlock Text="What VaultBox does:" FontSize="13" FontWeight="SemiBold"
                            Foreground="#cbd5e1" Margin="0,0,0,8"/>
-                <TextBlock Text="  Stores all your passwords locally on this computer"
+                <TextBlock Text="  Stores all your passwords in an encrypted local file"
                            FontSize="12" Foreground="#94a3b8" Margin="0,2"/>
                 <TextBlock Text="  Never sends anything to the internet"
                            FontSize="12" Foreground="#94a3b8" Margin="0,2"/>
                 <TextBlock Text="  Auto-fills passwords in your browser"
                            FontSize="12" Foreground="#94a3b8" Margin="0,2"/>
-                <TextBlock Text="  Generates strong passwords for you"
+                <TextBlock Text="  Works like KeePass with a modern UI"
                            FontSize="12" Foreground="#94a3b8" Margin="0,2"/>
             </StackPanel>
         </Border>
@@ -283,11 +282,11 @@ function Start-InstallWorker {
     $releaseUrl = $script:ReleaseUrl
     $scriptDir = $script:ScriptDir
     $defs = $script:DetectedBrowsers
-    $pythonEmbedUrl = $script:PythonEmbedUrl
+    $serverExeName = $script:ServerExeName
 
     $ps = [PowerShell]::Create()
     $ps.AddScript({
-        param($queue, $defs, $installDir, $releaseUrl, $scriptDir, $pythonEmbedUrl)
+        param($queue, $defs, $installDir, $releaseUrl, $scriptDir, $serverExeName)
 
         function QLog($text, $color) { $queue.Enqueue(@{ Text=$text; Color=$color }) }
 
@@ -295,14 +294,13 @@ function Start-InstallWorker {
         $ProgressPreference = 'SilentlyContinue'
 
         function Download-File([string]$url, [string]$outPath) {
-            # Try Invoke-WebRequest first, then fall back to WebClient
             try {
-                Invoke-WebRequest -Uri $url -OutFile $outPath -UseBasicParsing -TimeoutSec 60
+                Invoke-WebRequest -Uri $url -OutFile $outPath -UseBasicParsing -TimeoutSec 120
                 return $true
             } catch {}
             try {
                 $wc = New-Object System.Net.WebClient
-                $wc.Headers.Add("User-Agent", "VaultBox-Installer/0.2.0")
+                $wc.Headers.Add("User-Agent", "VaultBox-Installer/0.3.0")
                 $wc.DownloadFile($url, $outPath)
                 $wc.Dispose()
                 return $true
@@ -310,132 +308,52 @@ function Start-InstallWorker {
             return $false
         }
 
-        QLog "VaultBox Installer v0.2.0" "Cyan"
+        QLog "VaultBox Installer v0.3.0" "Cyan"
         QLog "" ""
 
         # =================================================================
-        # Step 1: Set up embedded Python + VaultBox Server
+        # Step 1: VaultBox Server (single .exe, no Python needed)
         # =================================================================
         QLog "[1/3] Setting up VaultBox Server..." "Cyan"
 
-        $serverDir = Join-Path $installDir "server"
-        $pythonDir = Join-Path $serverDir "python"
-
         if (-not (Test-Path $installDir)) { New-Item $installDir -ItemType Directory -Force | Out-Null }
-        if (-not (Test-Path $serverDir)) { New-Item $serverDir -ItemType Directory -Force | Out-Null }
 
-        # Copy or download server script
-        $serverScript = Join-Path $serverDir "vaultbox_server.py"
-        $localServer = Join-Path $scriptDir "server\vaultbox_server.py"
+        $serverExe = Join-Path $installDir $serverExeName
 
-        if (Test-Path $localServer) {
-            QLog "  Found local server files." ""
-            Copy-Item $localServer $serverScript -Force
-            $reqFile = Join-Path $scriptDir "server\requirements.txt"
-            if (Test-Path $reqFile) { Copy-Item $reqFile (Join-Path $serverDir "requirements.txt") -Force }
+        # Check for local .exe first (bundled with installer or from build)
+        $localExe = Join-Path $scriptDir "server\dist\$serverExeName"
+        $localExe2 = Join-Path $scriptDir $serverExeName
+
+        if (Test-Path $localExe) {
+            QLog "  Found local server build." ""
+            Copy-Item $localExe $serverExe -Force
+        } elseif (Test-Path $localExe2) {
+            QLog "  Found local server." ""
+            Copy-Item $localExe2 $serverExe -Force
+        } elseif (Test-Path $serverExe) {
+            QLog "  Server already installed." "Green"
         } else {
-            QLog "  Downloading server..." "Yellow"
-            $reqDest = Join-Path $serverDir "requirements.txt"
-            $ok1 = Download-File "$releaseUrl/vaultbox_server.py" $serverScript
-            $ok2 = Download-File "$releaseUrl/requirements.txt" $reqDest
-            if (-not $ok1) {
-                QLog "  ERROR: Could not download vaultbox_server.py" "Red"
+            QLog "  Downloading VaultBox Server..." "Yellow"
+            if (Download-File "$releaseUrl/$serverExeName" $serverExe) {
+                QLog "  Server downloaded." "Green"
+            } else {
+                QLog "  ERROR: Could not download $serverExeName" "Red"
                 QLog "  Check your internet connection and try again." ""
                 return
             }
-            if (-not $ok2) {
-                QLog "  Warning: Could not download requirements.txt" "Yellow"
-            }
-            QLog "  Server downloaded." "Green"
         }
 
-        # Find or install Python
-        $pythonExe = $null
-
-        # Check for bundled Python first
-        $bundledPython = Join-Path $pythonDir "python.exe"
-        if (Test-Path $bundledPython) {
-            $pythonExe = $bundledPython
-            QLog "  Using bundled Python." "Green"
-        }
-
-        # Check for system Python
-        if (-not $pythonExe) {
-            foreach ($cmd in @("python", "python3", "py")) {
-                try {
-                    $ver = & $cmd --version 2>&1
-                    if ($ver -match "Python 3") {
-                        $pythonExe = (Get-Command $cmd -ErrorAction SilentlyContinue).Source
-                        if (-not $pythonExe) { $pythonExe = $cmd }
-                        QLog "  Found system Python: $ver" "Green"
-                        break
-                    }
-                } catch {}
-            }
-        }
-
-        # Download embedded Python if not found
-        if (-not $pythonExe) {
-            QLog "  Python not found. Downloading portable Python..." "Yellow"
-            try {
-                if (-not (Test-Path $pythonDir)) { New-Item $pythonDir -ItemType Directory -Force | Out-Null }
-                $pythonZip = Join-Path $env:TEMP "python-embed.zip"
-                if (-not (Download-File $pythonEmbedUrl $pythonZip)) { throw "Download failed" }
-                Expand-Archive $pythonZip $pythonDir -Force
-                Remove-Item $pythonZip -Force -ErrorAction SilentlyContinue
-
-                $pythonExe = Join-Path $pythonDir "python.exe"
-
-                # Enable pip in embedded Python: uncomment "import site" in python*._pth
-                $pthFile = Get-ChildItem $pythonDir -Filter "python*._pth" | Select-Object -First 1
-                if ($pthFile) {
-                    $content = Get-Content $pthFile.FullName
-                    $content = $content -replace '#import site', 'import site'
-                    Set-Content $pthFile.FullName $content
-                }
-
-                # Install pip
-                QLog "  Installing pip..." "Yellow"
-                $getPip = Join-Path $env:TEMP "get-pip.py"
-                if (-not (Download-File "https://bootstrap.pypa.io/get-pip.py" $getPip)) { throw "Could not download pip installer" }
-                & $pythonExe $getPip --no-warn-script-location 2>&1 | Out-Null
-                Remove-Item $getPip -Force -ErrorAction SilentlyContinue
-
-                QLog "  Portable Python installed." "Green"
-            } catch {
-                QLog "  ERROR: Could not install Python." "Red"
-                QLog "  $($_.Exception.Message)" "Red"
-                QLog "  Please install Python 3.10+ from python.org and re-run." ""
-                return
-            }
-        }
-
-        # Install Python dependencies
-        $reqFile = Join-Path $serverDir "requirements.txt"
-        if (Test-Path $reqFile) {
-            QLog "  Installing server dependencies..." "Yellow"
-            try {
-                & $pythonExe -m pip install -r $reqFile --break-system-packages -q --no-warn-script-location 2>&1 | Out-Null
-                QLog "  Dependencies installed." "Green"
-            } catch {
-                QLog "  Warning: Some dependencies may not have installed." "Yellow"
-            }
-        }
-
-        # Create startup batch file
-        $batFile = Join-Path $serverDir "start-server.bat"
-        $batContent = "@echo off`r`ncd /d `"$serverDir`"`r`nstart /B `"VaultBox Server`" `"$pythonExe`" `"$serverScript`""
-        Set-Content $batFile $batContent -Encoding ASCII
+        # Unblock the exe (Windows may block downloaded executables)
+        try { Unblock-File $serverExe -ErrorAction SilentlyContinue } catch {}
 
         # Create startup shortcut (run on Windows login)
         try {
             $shell = New-Object -ComObject WScript.Shell
             $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
             $lnk = $shell.CreateShortcut((Join-Path $startupDir "VaultBox Server.lnk"))
-            $lnk.TargetPath = $pythonExe
-            $lnk.Arguments = "`"$serverScript`""
-            $lnk.WorkingDirectory = $serverDir
-            $lnk.Description = "VaultBox Local Password Server"
+            $lnk.TargetPath = $serverExe
+            $lnk.WorkingDirectory = $installDir
+            $lnk.Description = "VaultBox Local Password Manager"
             $lnk.WindowStyle = 7  # Minimized
             $lnk.Save()
             QLog "  Server set to auto-start on login." "Green"
@@ -446,8 +364,8 @@ function Start-InstallWorker {
         # Start server now
         QLog "  Starting VaultBox Server..." "Yellow"
         try {
-            Start-Process $pythonExe -ArgumentList "`"$serverScript`"" -WorkingDirectory $serverDir -WindowStyle Hidden
-            Start-Sleep -Seconds 3
+            Start-Process $serverExe -WorkingDirectory $installDir -WindowStyle Hidden
+            Start-Sleep -Seconds 4
 
             try {
                 $wc = New-Object System.Net.WebClient
@@ -571,7 +489,7 @@ function Start-InstallWorker {
 <?xml version='1.0' encoding='UTF-8'?>
 <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>
   <app appid='$extId'>
-    <updatecheck codebase='$crxFileUri' version='0.2.0' />
+    <updatecheck codebase='$crxFileUri' version='0.3.0' />
   </app>
 </gupdate>
 "@
@@ -656,10 +574,10 @@ function Start-InstallWorker {
         QLog "  3. Click 'Create account' and set your master password" ""
         QLog "  4. Start adding passwords!" ""
         QLog "" ""
-        QLog "Your vault is stored at: $env:LOCALAPPDATA\VaultBox\vault.db" ""
-        QLog "Back it up regularly to a USB drive or external storage." ""
+        QLog "Your encrypted vault: $env:LOCALAPPDATA\VaultBox\vault.db" ""
+        QLog "Back it up like a KeePass file -- copy to USB or cloud storage." ""
 
-    }).AddArgument($queue).AddArgument($defs).AddArgument($installDir).AddArgument($releaseUrl).AddArgument($scriptDir).AddArgument($pythonEmbedUrl) | Out-Null
+    }).AddArgument($queue).AddArgument($defs).AddArgument($installDir).AddArgument($releaseUrl).AddArgument($scriptDir).AddArgument($serverExeName) | Out-Null
 
     $handle = $ps.BeginInvoke()
 
@@ -698,8 +616,11 @@ function Start-UninstallWorker {
 
         # Stop server
         try {
-            $serverProcs = Get-Process -Name "python*" -ErrorAction SilentlyContinue | Where-Object {
-                try { $_.CommandLine -like "*vaultbox_server*" } catch { $false }
+            $serverProcs = Get-Process -Name "VaultBox-Server" -ErrorAction SilentlyContinue
+            if (-not $serverProcs) {
+                $serverProcs = Get-Process -Name "python*" -ErrorAction SilentlyContinue | Where-Object {
+                    try { $_.CommandLine -like "*vaultbox_server*" } catch { $false }
+                }
             }
             if ($serverProcs) {
                 $serverProcs | Stop-Process -Force
@@ -735,7 +656,15 @@ function Start-UninstallWorker {
             }
         }
 
-        # Remove install directory
+        # Remove install directory (but warn about vault)
+        $vaultFile = Join-Path $installDir "vault.db"
+        if (Test-Path $vaultFile) {
+            $backupDir = [Environment]::GetFolderPath("Desktop")
+            $backupFile = Join-Path $backupDir "vault.db.backup"
+            Copy-Item $vaultFile $backupFile -Force
+            QLog "Vault backed up to Desktop: vault.db.backup" "Green"
+        }
+
         if (Test-Path $installDir) {
             Remove-Item $installDir -Recurse -Force
             QLog "Removed $installDir" "Green"
