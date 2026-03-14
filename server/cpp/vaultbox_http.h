@@ -390,11 +390,13 @@ inline void setup_routes(httplib::Server& svr) {
     svr.Post("/api/vaultbox/launch", [](const httplib::Request& req, httplib::Response& res) {
         auto body = parse_body(req);
         std::string uri = body.value("uri", "");
-        if (!uri.empty()) {
+        if (!uri.empty() && (uri.rfind("http://", 0) == 0 || uri.rfind("https://", 0) == 0)) {
             std::wstring wuri = to_wstr(uri);
             ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            send_json(res, {{"success", true}});
+        } else {
+            send_error(res, 400, "Only http:// and https:// URIs are allowed");
         }
-        send_json(res, {{"success", true}});
     });
 
     // --- Log stream ---

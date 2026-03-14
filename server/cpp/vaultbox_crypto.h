@@ -159,7 +159,7 @@ struct EncString {
         auto dot = s.find('.');
         if (dot == std::string::npos) return es;
 
-        es.type = std::stoi(s.substr(0, dot));
+        try { es.type = std::stoi(s.substr(0, dot)); } catch (...) { return es; }
         if (es.type != 2) return es; // Only support AES-256-CBC + HMAC-SHA256
 
         std::string rest = s.substr(dot + 1);

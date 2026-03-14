@@ -55,8 +55,8 @@
 #include <sstream>
 #include <filesystem>
 #include <functional>
-#include <random>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <queue>
 #include <fstream>
@@ -178,13 +178,12 @@ inline std::string base64_encode(const std::string& s) {
 }
 
 inline std::vector<uint8_t> base64_decode(const std::string& s) {
-    static int tbl[256];
-    static bool init = false;
-    if (!init) {
-        std::fill(tbl, tbl + 256, -1);
-        for (int i = 0; i < 64; i++) tbl[(unsigned char)B64[i]] = i;
-        init = true;
-    }
+    static const auto tbl = []() {
+        std::array<int, 256> t;
+        t.fill(-1);
+        for (int i = 0; i < 64; i++) t[(unsigned char)B64[i]] = i;
+        return t;
+    }();
     std::vector<uint8_t> r;
     r.reserve(s.size() * 3 / 4);
     int val = 0, bits = -8;
@@ -226,14 +225,14 @@ inline std::string generate_uuid() {
 }
 
 inline std::string generate_hex(int bytes = 32) {
-    static thread_local std::mt19937 rng(std::random_device{}());
     static const char hex[] = "0123456789abcdef";
+    std::vector<uint8_t> buf(bytes);
+    BCryptGenRandom(nullptr, buf.data(), (ULONG)bytes, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     std::string r;
     r.reserve(bytes * 2);
     for (int i = 0; i < bytes; i++) {
-        uint8_t b = rng() & 0xFF;
-        r += hex[b >> 4];
-        r += hex[b & 0xF];
+        r += hex[buf[i] >> 4];
+        r += hex[buf[i] & 0xF];
     }
     return r;
 }

@@ -171,8 +171,10 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
             ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (cmd.rfind("launch:", 0) == 0) {
             std::string uri = cmd.substr(7);
-            std::wstring wuri = to_wstr(uri);
-            ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            if (uri.rfind("http://", 0) == 0 || uri.rfind("https://", 0) == 0) {
+                std::wstring wuri = to_wstr(uri);
+                ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
         }
     } catch (...) {
         if (msg == "minimize") {
@@ -184,8 +186,10 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
             ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (msg.rfind("launch:", 0) == 0) {
             std::string uri = msg.substr(7);
-            std::wstring wuri = to_wstr(uri);
-            ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            if (uri.rfind("http://", 0) == 0 || uri.rfind("https://", 0) == 0) {
+                std::wstring wuri = to_wstr(uri);
+                ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
         }
     }
 }
@@ -240,9 +244,11 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         ShowWindow(hwnd, SW_HIDE);
         return 0;
 
+    case WM_QUERYENDSESSION:
+        return TRUE; // Allow Windows to shut down
+
     case WM_VAULTBOX_QUIT:
     case WM_ENDSESSION:
-    case WM_QUERYENDSESSION:
         remove_tray_icon();
         g_shutdown = true;
         if (g_webviewController) {
@@ -251,7 +257,7 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         g_webview = nullptr;
         DestroyWindow(hwnd);
-        return (msg == WM_QUERYENDSESSION) ? TRUE : 0;
+        return 0;
 
     case WM_DESTROY:
         PostQuitMessage(0);

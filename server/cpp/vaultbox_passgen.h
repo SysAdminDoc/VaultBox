@@ -31,11 +31,20 @@ inline std::string generate_password(const PassGenOptions& opts) {
     if (charset.empty()) charset = "abcdefghijkmnopqrstuvwxyz23456789";
 
     int len = std::max(4, std::min(128, opts.length));
-    auto randbytes = VBCrypto::random_bytes(len);
+    size_t csz = charset.size();
+    // Rejection sampling to eliminate modulo bias
+    uint8_t limit = (uint8_t)(256 - (256 % csz));
     std::string result;
     result.reserve(len);
-    for (int i = 0; i < len; i++) {
-        result += charset[randbytes[i] % charset.size()];
+    int filled = 0;
+    while (filled < len) {
+        auto randbytes = VBCrypto::random_bytes(len - filled + 16);
+        for (size_t i = 0; i < randbytes.size() && filled < len; i++) {
+            if (randbytes[i] < limit) {
+                result += charset[randbytes[i] % csz];
+                filled++;
+            }
+        }
     }
     return result;
 }

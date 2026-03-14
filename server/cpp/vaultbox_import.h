@@ -104,6 +104,7 @@ inline int import_bitwarden_json(const std::string& filepath) {
             auto& login = item["login"];
             de.username = login.value("username", "");
             de.password = login.value("password", "");
+            de.totp = login.value("totp", "");
             if (login.contains("uris") && login["uris"].is_array() && !login["uris"].empty())
                 de.uri = login["uris"][0].value("uri", "");
         }
@@ -158,6 +159,7 @@ inline int import_bitwarden_csv(const std::string& filepath) {
         de.uri = fields.size() > 7 ? fields[7] : "";
         de.username = fields.size() > 8 ? fields[8] : "";
         de.password = fields.size() > 9 ? fields[9] : "";
+        de.totp = fields.size() > 10 ? fields[10] : "";
 
         // Find or create folder
         if (!folderName.empty()) {
@@ -317,7 +319,7 @@ inline bool export_bitwarden_json(const std::string& filepath) {
             } else {
                 login["uris"] = json::array();
             }
-            login["totp"] = nullptr;
+            login["totp"] = e.totp.empty() ? json(nullptr) : json(e.totp);
             item["login"] = login;
         } else if (e.type == 2) {
             item["secureNote"] = json({{"type", 0}});
@@ -379,7 +381,7 @@ inline bool export_csv(const std::string& filepath) {
             << csv_escape(e.uri) << ","
             << csv_escape(e.username) << ","
             << csv_escape(e.password) << ","
-            << "\n"; // totp
+            << csv_escape(e.totp) << "\n";
     }
 
     out.close();
