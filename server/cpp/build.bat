@@ -1,8 +1,10 @@
 @echo off
 setlocal
 
+cd /d "%~dp0"
+
 echo ============================================
-echo  VaultBox Server - C++ Build
+echo  VaultBox Desktop v0.4.0 - C++ Build
 echo ============================================
 
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
@@ -20,10 +22,10 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/2] Compiling VaultBox Server...
-cl /EHsc /O2 /std:c++17 /bigobj /DWIN32_LEAN_AND_MEAN /DNOMINMAX vaultbox_server.cpp sqlite3.obj /Fe:VaultBox-Server.exe /nologo /link ws2_32.lib bcrypt.lib rpcrt4.lib shell32.lib user32.lib gdi32.lib advapi32.lib
+echo [2/2] Compiling VaultBox Desktop...
+cl /EHsc /O2 /std:c++17 /bigobj /DWIN32_LEAN_AND_MEAN /DNOMINMAX vaultbox_server.cpp sqlite3.obj /Fe:VaultBox-Server.exe /nologo /link ws2_32.lib bcrypt.lib rpcrt4.lib shell32.lib user32.lib gdi32.lib advapi32.lib comctl32.lib dwmapi.lib uxtheme.lib comdlg32.lib ole32.lib
 if errorlevel 1 (
-    echo ERROR: Server compilation failed.
+    echo ERROR: Compilation failed.
     exit /b 1
 )
 
