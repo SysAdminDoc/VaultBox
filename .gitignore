@@ -56,3 +56,12 @@ apps/**/config/local.json
 
 # Nx
 .nx
+
+# C++ build artifacts
+*.obj
+*.exe
+server/cpp/deps/
+
+# Python
+__pycache__/
+*.pyc

@@ -4,6 +4,13 @@
 
 import sys
 import os
+import multiprocessing
+
+# PyInstaller freeze support MUST run before any other imports
+# to prevent frozen child processes from re-executing the full script
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+
 import json
 import uuid
 import sqlite3
@@ -14,12 +21,17 @@ import threading
 import time
 import logging
 import signal
+import socket
+import ctypes
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from contextlib import contextmanager
 
 # --- Auto-bootstrap dependencies ---
 def _bootstrap():
+    # Skip bootstrap in frozen builds - dependencies are bundled
+    if getattr(sys, 'frozen', False):
+        return
     required = {
         "fastapi": "fastapi",
         "uvicorn": "uvicorn",
@@ -1065,7 +1077,52 @@ def start_tray(shutdown_event: threading.Event):
 # Main
 # =============================================================================
 
+def acquire_single_instance():
+    """Ensure only one VaultBox Server runs at a time using a Windows named mutex."""
+    if sys.platform == "win32":
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        mutex_name = "Global\\VaultBoxServerMutex"
+        handle = kernel32.CreateMutexW(None, True, mutex_name)
+        last_error = ctypes.get_last_error()
+        # ERROR_ALREADY_EXISTS = 183
+        if last_error == 183:
+            kernel32.CloseHandle(handle)
+            return None
+        if not handle:
+            return None
+        return handle
+    else:
+        lock_file = DATA_DIR / ".server.lock"
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            import fcntl
+            fp = open(lock_file, "w")
+            fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fp.write(str(os.getpid()))
+            fp.flush()
+            return fp
+        except (IOError, OSError):
+            return None
+
+def port_in_use(host: str, port: int) -> bool:
+    """Check if a port is already bound."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return False
+        except OSError:
+            return True
+
 def main():
+    # Single-instance guard
+    mutex = acquire_single_instance()
+    if mutex is None:
+        os._exit(0)
+
+    # Port guard - if something else holds 8787, exit
+    if port_in_use(HOST, PORT):
+        os._exit(0)
+
     init_db()
 
     shutdown_event = threading.Event()

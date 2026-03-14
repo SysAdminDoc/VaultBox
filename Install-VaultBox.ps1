@@ -321,15 +321,19 @@ function Start-InstallWorker {
         $serverExe = Join-Path $installDir $serverExeName
 
         # Check for local .exe first (bundled with installer or from build)
-        $localExe = Join-Path $scriptDir "server\dist\$serverExeName"
-        $localExe2 = Join-Path $scriptDir $serverExeName
+        $localExe = Join-Path $scriptDir "server\cpp\$serverExeName"
+        $localExe2 = Join-Path $scriptDir "server\dist\$serverExeName"
+        $localExe3 = Join-Path $scriptDir $serverExeName
 
         if (Test-Path $localExe) {
-            QLog "  Found local server build." ""
+            QLog "  Found local server build (C++)." ""
             Copy-Item $localExe $serverExe -Force
         } elseif (Test-Path $localExe2) {
-            QLog "  Found local server." ""
+            QLog "  Found local server build." ""
             Copy-Item $localExe2 $serverExe -Force
+        } elseif (Test-Path $localExe3) {
+            QLog "  Found local server." ""
+            Copy-Item $localExe3 $serverExe -Force
         } elseif (Test-Path $serverExe) {
             QLog "  Server already installed." "Green"
         } else {
@@ -361,22 +365,34 @@ function Start-InstallWorker {
             QLog "  Warning: Could not create startup shortcut." "Yellow"
         }
 
-        # Start server now
-        QLog "  Starting VaultBox Server..." "Yellow"
+        # Start server now (only if not already running)
+        $alreadyRunning = $false
         try {
-            Start-Process $serverExe -WorkingDirectory $installDir -WindowStyle Hidden
-            Start-Sleep -Seconds 4
+            $wc = New-Object System.Net.WebClient
+            $wc.DownloadString("http://127.0.0.1:8787/alive") | Out-Null
+            $wc.Dispose()
+            $alreadyRunning = $true
+        } catch {}
 
+        if ($alreadyRunning) {
+            QLog "  Server already running on http://127.0.0.1:8787" "Green"
+        } else {
+            QLog "  Starting VaultBox Server..." "Yellow"
             try {
-                $wc = New-Object System.Net.WebClient
-                $wc.DownloadString("http://127.0.0.1:8787/alive") | Out-Null
-                $wc.Dispose()
-                QLog "  Server running on http://127.0.0.1:8787" "Green"
+                Start-Process $serverExe -WorkingDirectory $installDir -WindowStyle Hidden
+                Start-Sleep -Seconds 4
+
+                try {
+                    $wc = New-Object System.Net.WebClient
+                    $wc.DownloadString("http://127.0.0.1:8787/alive") | Out-Null
+                    $wc.Dispose()
+                    QLog "  Server running on http://127.0.0.1:8787" "Green"
+                } catch {
+                    QLog "  Server started but not responding yet. It may need a moment." "Yellow"
+                }
             } catch {
-                QLog "  Server started but not responding yet. It may need a moment." "Yellow"
+                QLog "  Warning: Could not start server." "Yellow"
             }
-        } catch {
-            QLog "  Warning: Could not start server." "Yellow"
         }
 
         QLog "" ""
