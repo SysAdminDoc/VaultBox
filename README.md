@@ -2,21 +2,16 @@
 
 A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's browser extension that stores everything in an encrypted local file on your computer. No cloud servers, no accounts to create online, no telemetry.
 
-## Quick Install (Windows)
+## Download
 
-```powershell
-irm https://github.com/SysAdminDoc/VaultBox/releases/latest/download/Install-VaultBox.ps1 -OutFile Install-VaultBox.ps1; .\Install-VaultBox.ps1
-```
+Grab the latest from the [releases page](https://github.com/SysAdminDoc/VaultBox/releases/latest):
 
-No prerequisites needed. Single .exe + browser extension. Nothing to install first.
-
-Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox/releases/latest):
-
-| Asset                    | Description                             |
-| ------------------------ | --------------------------------------- |
-| `Install-VaultBox.ps1`   | One-click GUI installer (recommended)   |
-| `VaultBox-Server.exe`    | Standalone C++ server (no dependencies) |
-| `VaultBox-Extension.zip` | Chrome/Edge/Brave extension (MV3)       |
+| Asset                      | Description                           |
+| -------------------------- | ------------------------------------- |
+| `VaultBox-Setup-x.x.x.exe` | Installer (recommended)               |
+| `VaultBox-Server.exe`      | Standalone server (no install needed) |
+| `VaultBox-chrome.zip`      | Chrome/Edge/Brave extension (MV3)     |
+| `VaultBox-firefox.zip`     | Firefox extension                     |
 
 ## What This Is
 
@@ -28,41 +23,45 @@ Your passwords are stored in an encrypted local file (`vault.db`) just like KeeP
 
 ```text
 +-------------------+          +----------------------+          +------------------+
-|  Browser Extension | <------> |  VaultBox-Server.exe | <------> |  vault.db        |
-|  (VaultBox UI)    |  HTTP    |  127.0.0.1:8787      |          |  Encrypted vault |
+|  Browser Extension | <------> |  VaultBox Desktop    | <------> |  vault.db        |
+|  (Autofill UI)    |  HTTP    |  127.0.0.1:8787      |          |  Encrypted vault |
 +-------------------+  only    +----------------------+          +------------------+
-                      localhost   Single .exe (2.3 MB)             %LOCALAPPDATA%\VaultBox\
+                      localhost   WebView2 GUI + Server            %LOCALAPPDATA%\VaultBox\
                                   System tray icon
 ```
 
-- **Extension** = VaultBox browser extension (rebranded Bitwarden, pointed at localhost)
-- **Server** = Native C++ binary running in your system tray (like KeePass sits in the tray)
+- **Desktop App** = Native C++ WebView2 app with embedded Bitwarden-styled vault manager and HTTP server
+- **Extension** = Browser extension for autofill (rebranded Bitwarden, pointed at localhost)
 - **Vault** = Encrypted SQLite file on disk, just like a KeePass .kdbx file
 
-All encryption/decryption happens in the extension (client-side). The server only stores already-encrypted data. This matches Bitwarden's zero-knowledge architecture.
+All encryption/decryption happens client-side. The server only stores already-encrypted data. This matches Bitwarden's zero-knowledge architecture.
 
 ## Key Features
 
+- **Desktop Vault Manager** - WebView2-based GUI styled like Bitwarden's extension. Browse, search, edit, and organize your vault without a browser.
+- **Web Vault** - Access your vault at `http://127.0.0.1:8787/` from any browser on your machine.
 - **Single Encrypted File** - Your vault is one file (`vault.db`). Copy it, back it up, move it between PCs.
 - **Password-Only Setup** - No email required. Set a master password and go.
 - **Localhost Only** - Server binds to `127.0.0.1:8787`. No external network access. No DNS lookups.
 - **Full Autofill** - Login, credit card, identity, and FIDO2 autofill works exactly like standard Bitwarden.
-- **Password Generator** - Fully client-side password and passphrase generation.
+- **Password Generator** - Configurable length, character sets, copy-to-clipboard.
 - **TOTP Codes** - Time-based one-time passwords generated locally.
-- **Import from Bitwarden** - Export from Bitwarden cloud, import into VaultBox. After creating your vault, you're taken straight to the import page.
-- **System Tray** - Server runs in the system tray with status indicator and quick access to data folder.
-- **Auto-Start** - Server starts automatically on Windows login.
+- **Import/Export** - Bitwarden JSON/CSV, Chrome CSV, KeePass XML import. JSON/CSV export.
+- **Folder Management** - Create, rename, delete folders with sidebar navigation.
+- **System Tray** - Minimize or close to tray. Restore on double-click, quit from context menu.
+- **Start at Login** - Optional auto-start via Settings toggle.
+- **Installer** - Inno Setup installer with desktop shortcut and startup options.
 - **No Telemetry** - Event collection, usage analytics, and crash reporting are completely removed.
-- **No Prerequisites** - Single C++ .exe (2.3 MB), no Python/Java/runtime needed.
+- **No Prerequisites** - Single C++ exe, no Python/Java/runtime needed. WebView2 is included with Windows 10/11.
 
 ## How It Works
 
-1. **Install** - Run `Install-VaultBox.ps1` (one click)
-2. **Server starts** - `VaultBox-Server.exe` runs in the system tray
-3. **Create vault** - Open the extension, click "Create vault", set a master password
-4. **Import passwords** - Import your Bitwarden export (you're redirected to import after setup)
-5. **Use normally** - Add passwords, autofill, generate passwords, organize with folders
-6. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS (just like backing up a KeePass file)
+1. **Install** - Run the installer or drop `VaultBox-Server.exe` anywhere
+2. **Server starts** - VaultBox opens with the desktop vault manager and sits in the system tray
+3. **Create vault** - Set a master password
+4. **Import passwords** - Import from Bitwarden, Chrome, KeePass, or add manually
+5. **Install extension** - Load the browser extension for autofill support
+6. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS
 
 ## VaultBox vs KeePass vs Bitwarden
 
@@ -83,32 +82,35 @@ All encryption/decryption happens in the extension (client-side). The server onl
 
 ### Prerequisites
 
-- Node.js v22 (check `.nvmrc`)
-- npm
 - Visual Studio 2022+ with C++ workload (for the server)
-
-### Build the Extension
-
-```bash
-git clone <this-repo> vaultbox
-cd vaultbox
-npm ci
-
-cd apps/browser
-npm run build
-```
+- Node.js v22 + npm (for the browser extension)
+- Inno Setup 6 (for the installer)
 
 ### Build the Server
 
 ```bash
 cd server/cpp
 build.bat
-# Output: server/cpp/VaultBox-Server.exe
+# Output: VaultBox-Server.exe
 ```
 
-Requires MSVC (Visual Studio C++ compiler). The build script auto-detects your VS installation.
+### Build the Installer
 
-### Load in Chrome
+```bash
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" server/cpp/installer.iss
+# Output: server/cpp/Output/VaultBox-Setup-0.5.0.exe
+```
+
+### Build the Extension
+
+```bash
+npm ci
+cd apps/browser
+npm run build:chrome    # Chrome/Edge/Brave
+npm run build:firefox   # Firefox
+```
+
+### Load Extension in Chrome
 
 1. Open `chrome://extensions/`
 2. Enable "Developer mode" (top right)
@@ -117,7 +119,7 @@ Requires MSVC (Visual Studio C++ compiler). The build script auto-detects your V
 
 ## Server API
 
-The VaultBox server implements the Bitwarden-compatible API:
+The VaultBox server implements a Bitwarden-compatible API:
 
 | Endpoint                                     | Method | Description            |
 | -------------------------------------------- | ------ | ---------------------- |
@@ -146,22 +148,6 @@ All other Bitwarden API endpoints return safe defaults (empty lists, 200 OK).
 - **Localhost Only**: Server binds exclusively to `127.0.0.1` - inaccessible from other machines.
 - **Zero Knowledge**: Server stores only encrypted data. Decryption happens in the browser extension.
 - **No Tracking**: All event collection, analytics, and telemetry services are disabled.
-
-## Files
-
-### Server
-
-- `server/cpp/vaultbox_server.cpp` - Native C++ Bitwarden-compatible API server (cpp-httplib + SQLite + system tray)
-- `server/cpp/build.bat` - MSVC build script
-- `server/cpp/deps/` - Header-only dependencies (cpp-httplib, nlohmann/json, SQLite amalgamation)
-
-### Extension Modifications
-
-- `apps/browser/src/background/main.background.ts` - Environment forced to localhost:8787
-- `apps/browser/src/_locales/en/messages.json` - VaultBox branding
-- `libs/auth/src/angular/login/login.component.*` - Password-only login (no email/SSO/passkeys)
-- `libs/auth/src/angular/registration/` - Password-only registration, auto-redirect to import
-- `apps/browser/config/development.json` - Managed environment config for localhost
 
 ## Limitations
 
