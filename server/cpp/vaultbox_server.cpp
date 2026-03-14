@@ -686,7 +686,8 @@ void setup_routes(httplib::Server& svr) {
             {"Kdf", safe("kdf")}, {"KdfIterations", safe("kdf_iterations")},
             {"KdfMemory", safe("kdf_memory")}, {"KdfParallelism", safe("kdf_parallelism")},
             {"ResetMasterPassword", false}, {"ForcePasswordReset", false},
-            {"MasterPasswordPolicy", nullptr}, {"UserDecryptionOptions", nullptr},
+            {"MasterPasswordPolicy", nullptr},
+            {"UserDecryptionOptions", {{"HasMasterPassword", true}}},
             {"scope", "api offline_access"},
         });
     });
