@@ -12,12 +12,11 @@ No prerequisites needed. Single .exe + browser extension. Nothing to install fir
 
 Or download manually from the [latest release](https://github.com/SysAdminDoc/VaultBox/releases/latest):
 
-| Asset                  | Description                                  |
-| ---------------------- | -------------------------------------------- |
-| `Install-VaultBox.ps1` | One-click GUI installer (recommended)        |
-| `VaultBox-Server.exe`  | Standalone server (no Python needed)         |
-| `VaultBox-chrome.zip`  | Chrome/Edge/Brave extension (manual install) |
-| `VaultBox-firefox.zip` | Firefox extension (manual install)           |
+| Asset                    | Description                             |
+| ------------------------ | --------------------------------------- |
+| `Install-VaultBox.ps1`   | One-click GUI installer (recommended)   |
+| `VaultBox-Server.exe`    | Standalone C++ server (no dependencies) |
+| `VaultBox-Extension.zip` | Chrome/Edge/Brave extension (MV3)       |
 
 ## What This Is
 
@@ -30,14 +29,14 @@ Your passwords are stored in an encrypted local file (`vault.db`) just like KeeP
 ```text
 +-------------------+          +----------------------+          +------------------+
 |  Browser Extension | <------> |  VaultBox-Server.exe | <------> |  vault.db        |
-|  (Bitwarden UI)   |  HTTP    |  127.0.0.1:8787      |          |  Encrypted vault |
+|  (VaultBox UI)    |  HTTP    |  127.0.0.1:8787      |          |  Encrypted vault |
 +-------------------+  only    +----------------------+          +------------------+
-                      localhost   Single .exe                      %LOCALAPPDATA%\VaultBox\
+                      localhost   Single .exe (2.3 MB)             %LOCALAPPDATA%\VaultBox\
                                   System tray icon
 ```
 
-- **Extension** = Standard Bitwarden browser extension pointed at localhost
-- **Server** = Single .exe running in your system tray (like KeePass sits in the tray)
+- **Extension** = VaultBox browser extension (rebranded Bitwarden, pointed at localhost)
+- **Server** = Native C++ binary running in your system tray (like KeePass sits in the tray)
 - **Vault** = Encrypted SQLite file on disk, just like a KeePass .kdbx file
 
 All encryption/decryption happens in the extension (client-side). The server only stores already-encrypted data. This matches Bitwarden's zero-knowledge architecture.
@@ -45,22 +44,25 @@ All encryption/decryption happens in the extension (client-side). The server onl
 ## Key Features
 
 - **Single Encrypted File** - Your vault is one file (`vault.db`). Copy it, back it up, move it between PCs.
+- **Password-Only Setup** - No email required. Set a master password and go.
 - **Localhost Only** - Server binds to `127.0.0.1:8787`. No external network access. No DNS lookups.
 - **Full Autofill** - Login, credit card, identity, and FIDO2 autofill works exactly like standard Bitwarden.
 - **Password Generator** - Fully client-side password and passphrase generation.
 - **TOTP Codes** - Time-based one-time passwords generated locally.
+- **Import from Bitwarden** - Export from Bitwarden cloud, import into VaultBox. After creating your vault, you're taken straight to the import page.
 - **System Tray** - Server runs in the system tray with status indicator and quick access to data folder.
 - **Auto-Start** - Server starts automatically on Windows login.
 - **No Telemetry** - Event collection, usage analytics, and crash reporting are completely removed.
-- **No Prerequisites** - Single .exe, no Python/Java/runtime needed.
+- **No Prerequisites** - Single C++ .exe (2.3 MB), no Python/Java/runtime needed.
 
 ## How It Works
 
 1. **Install** - Run `Install-VaultBox.ps1` (one click)
 2. **Server starts** - `VaultBox-Server.exe` runs in the system tray
-3. **Create account** - Open the extension, register with email + master password (stored locally)
-4. **Use normally** - Add passwords, autofill, generate passwords, organize with folders
-5. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS (just like backing up a KeePass file)
+3. **Create vault** - Open the extension, click "Create vault", set a master password
+4. **Import passwords** - Import your Bitwarden export (you're redirected to import after setup)
+5. **Use normally** - Add passwords, autofill, generate passwords, organize with folders
+6. **Backup** - Copy `%LOCALAPPDATA%\VaultBox\vault.db` to USB/NAS (just like backing up a KeePass file)
 
 ## VaultBox vs KeePass vs Bitwarden
 
@@ -69,6 +71,7 @@ All encryption/decryption happens in the extension (client-side). The server onl
 | Storage            | Local .kdbx file     | Local .db file        | Cloud             |
 | Browser Autofill   | Via plugins (clunky) | Native (built-in)     | Native (built-in) |
 | UI                 | Desktop-era          | Modern (Bitwarden UI) | Modern            |
+| Email Required     | No                   | No                    | Yes               |
 | Password Generator | Yes                  | Yes                   | Yes               |
 | TOTP               | Via plugins          | Built-in              | Built-in (paid)   |
 | Install Complexity | Download + plugins   | One-click installer   | Account + install |
@@ -82,44 +85,28 @@ All encryption/decryption happens in the extension (client-side). The server onl
 
 - Node.js v22 (check `.nvmrc`)
 - npm
-- Python 3.10+ (for the server, only needed for development)
-- PyInstaller (to build the .exe)
+- Visual Studio 2022+ with C++ workload (for the server)
 
 ### Build the Extension
 
 ```bash
 git clone <this-repo> vaultbox
 cd vaultbox
-
 npm ci
 
-# Chrome (MV3)
 cd apps/browser
-npm run build:chrome
-
-# Firefox (MV2)
-npm run build:firefox
+npm run build
 ```
 
-### Build the Server .exe
+### Build the Server
 
 ```bash
-cd server
-pip install -r requirements.txt
-pip install pyinstaller
-pyinstaller vaultbox_server.spec
-# Output: server/dist/VaultBox-Server.exe
+cd server/cpp
+build.bat
+# Output: server/cpp/VaultBox-Server.exe
 ```
 
-### Run the Server (Development)
-
-```bash
-cd server
-pip install -r requirements.txt
-python vaultbox_server.py
-```
-
-The server starts on `http://127.0.0.1:8787` with a system tray icon.
+Requires MSVC (Visual Studio C++ compiler). The build script auto-detects your VS installation.
 
 ### Load in Chrome
 
@@ -127,12 +114,6 @@ The server starts on `http://127.0.0.1:8787` with a system tray icon.
 2. Enable "Developer mode" (top right)
 3. Click "Load unpacked"
 4. Select the `apps/browser/build/` directory
-
-### Load in Firefox
-
-1. Open `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on..."
-3. Select any file inside the `apps/browser/build/` directory
 
 ## Server API
 
@@ -170,19 +151,17 @@ All other Bitwarden API endpoints return safe defaults (empty lists, 200 OK).
 
 ### Server
 
-- `server/vaultbox_server.py` - Local Bitwarden-compatible API server (FastAPI + SQLite + system tray)
-- `server/vaultbox_server.spec` - PyInstaller spec for building standalone .exe
-- `server/requirements.txt` - Python dependencies (development only)
+- `server/cpp/vaultbox_server.cpp` - Native C++ Bitwarden-compatible API server (cpp-httplib + SQLite + system tray)
+- `server/cpp/build.bat` - MSVC build script
+- `server/cpp/deps/` - Header-only dependencies (cpp-httplib, nlohmann/json, SQLite amalgamation)
 
 ### Extension Modifications
 
-- `apps/browser/src/background/main.background.ts` - Standard API/Sync services pointed at localhost
-- `apps/browser/src/platform/offline/offline-event-upload.service.ts` - No-op telemetry
-- `apps/browser/src/manifest.v3.json` - Stripped permissions, rebranded
-- `apps/browser/src/manifest.json` - Stripped permissions, rebranded (MV2)
-- `apps/browser/src/_locales/en/messages.json` - Rebranded strings
-- `libs/common/src/platform/services/default-environment.service.ts` - URLs point to localhost:8787
-- `apps/browser/src/background/runtime.background.ts` - Disabled install page redirect
+- `apps/browser/src/background/main.background.ts` - Environment forced to localhost:8787
+- `apps/browser/src/_locales/en/messages.json` - VaultBox branding
+- `libs/auth/src/angular/login/login.component.*` - Password-only login (no email/SSO/passkeys)
+- `libs/auth/src/angular/registration/` - Password-only registration, auto-redirect to import
+- `apps/browser/config/development.json` - Managed environment config for localhost
 
 ## Limitations
 

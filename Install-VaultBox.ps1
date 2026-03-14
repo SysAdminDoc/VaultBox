@@ -69,11 +69,11 @@ function Get-BrowserExe([string]$key) {
 }
 
 $script:BrowserDefs = @(
-    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-chrome.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-firefox.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
+    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
+    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-Extension.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
 )
 
 foreach ($b in $script:BrowserDefs) {
