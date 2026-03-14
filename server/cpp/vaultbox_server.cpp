@@ -29,13 +29,22 @@ int main() {
         return 0;
     }
 
-    // Init data directory
+    // Init data directory (portable mode: vault.db next to exe takes priority)
     const char* custom = getenv("VAULTBOX_DATA");
     if (custom) {
         g_data_dir = fs::path(custom);
     } else {
-        const char* la = getenv("LOCALAPPDATA");
-        g_data_dir = fs::path(la ? la : ".") / "VaultBox";
+        // Check for portable mode: vault.db next to the executable
+        wchar_t exePath[MAX_PATH];
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        fs::path exeDir = fs::path(exePath).parent_path();
+        if (fs::exists(exeDir / "vault.db")) {
+            g_data_dir = exeDir;
+            g_portable_mode = true;
+        } else {
+            const char* la = getenv("LOCALAPPDATA");
+            g_data_dir = fs::path(la ? la : ".") / "VaultBox";
+        }
     }
     g_db_path = g_data_dir / "vault.db";
 

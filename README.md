@@ -48,7 +48,18 @@ All encryption/decryption happens client-side. The server only stores already-en
 - **TOTP Codes** - Time-based one-time passwords generated locally.
 - **Import/Export** - Bitwarden JSON/CSV, Chrome CSV, KeePass XML import. JSON/CSV export.
 - **Folder Management** - Create, rename, delete folders with sidebar navigation.
-- **System Tray** - Minimize or close to tray. Restore on double-click, quit from context menu.
+- **TOTP Display** - View and copy time-based one-time passwords directly in the desktop vault with countdown timer.
+- **Auto-Lock** - Configurable idle timeout (1/5/15/30/60 min) automatically locks vault.
+- **Clipboard Auto-Clear** - Copied passwords are cleared from clipboard after configurable timeout (10/30/60/120s).
+- **Password Strength Meter** - Visual strength indicator when setting master password.
+- **Dark/Light Theme** - Toggle between dark and light themes in Settings.
+- **Multi-Vault** - Create and switch between multiple vault files from Settings.
+- **Drag & Drop Import** - Drop JSON/CSV/XML files onto the window to import.
+- **Fuzzy Search** - Multi-term search across name, username, URI, notes, and folder name.
+- **Auto-Update Check** - Check for new releases from GitHub in Settings.
+- **Portable Mode** - Place `vault.db` next to the exe for USB deployment (no install needed).
+- **Cloud Backup** - Auto-detect Google Drive/OneDrive/Dropbox and backup encrypted vault.
+- **System Tray** - Minimize or close to tray with vault status and backup info in tooltip.
 - **Start at Login** - Optional auto-start via Settings toggle.
 - **Installer** - Inno Setup installer with desktop shortcut and startup options.
 - **No Telemetry** - Event collection, usage analytics, and crash reporting are completely removed.

@@ -187,6 +187,13 @@ textarea.form-input{resize:vertical;min-height:80px}
 .toast.success{border-left:3px solid var(--success)}
 .toast.error{border-left:3px solid var(--danger)}
 
+/* Light theme */
+[data-theme="light"]{
+  --bg:#f0f2f5;--bg-alt:#e4e7ec;--bg-card:#ffffff;--bg-input:#f5f5f7;
+  --bg-hover:#e8eaef;--bg-active:#175DDC18;--text:#1a1a2e;--text-sec:#555566;
+  --text-muted:#888899;--border:#d0d0dd;--shadow:0 4px 24px rgba(0,0,0,.1);
+}
+
 /* Animations */
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .item-row{animation:fadeIn .15s ease both}
@@ -217,6 +224,10 @@ R"VBHTML(<body>
       <div class="form-group">
         <label>Master Password</label>
         <input type="password" id="unlock-password" class="form-input" placeholder="Enter your master password" autocomplete="off">
+      </div>
+      <div id="pw-strength" style="display:none;margin-top:8px;text-align:left">
+        <div style="height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden"><div id="pw-strength-bar" style="height:100%;width:0;transition:all .3s;border-radius:2px"></div></div>
+        <div id="pw-strength-label" style="font-size:11px;margin-top:4px;color:var(--text-muted)"></div>
       </div>
       <button class="btn btn-primary" id="unlock-btn" onclick="doUnlock()">Unlock</button>
       <div class="unlock-error" id="unlock-error"></div>
@@ -349,6 +360,44 @@ R"VBHTML(
                 <span>Start at login</span>
                 <label class="toggle"><input type="checkbox" id="startup-toggle" onchange="toggleStartup(this.checked)"><span class="toggle-slider"></span></label>
               </div>
+              <div class="settings-row">
+                <span>Theme</span>
+                <select class="form-input" id="theme-select" onchange="setTheme(this.value)" style="width:120px">
+                  <option value="dark">Dark</option>
+                  <option value="light">Light</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Security</h3>
+              <div class="settings-row">
+                <span>Auto-lock after inactivity</span>
+                <select class="form-input" id="autolock-select" onchange="setAutoLock(this.value)" style="width:120px">
+                  <option value="0">Never</option>
+                  <option value="1">1 minute</option>
+                  <option value="5">5 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <span>Clear clipboard after copy</span>
+                <select class="form-input" id="clipboard-select" onchange="setClipboardClear(this.value)" style="width:120px">
+                  <option value="0">Never</option>
+                  <option value="10">10 seconds</option>
+                  <option value="30">30 seconds</option>
+                  <option value="60">60 seconds</option>
+                  <option value="120">2 minutes</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Updates</h3>
+              <div class="settings-row">
+                <span id="update-status">Check for updates</span>
+                <button class="btn btn-secondary btn-sm" id="update-btn" onclick="checkForUpdate()">Check Now</button>
+              </div>
             </div>
             <div class="settings-section">
               <h3>Cloud Backup</h3>
@@ -390,14 +439,16 @@ R"VBHTML(
             </div>
             <div class="settings-section">
               <h3>Vault</h3>
-              <div style="display:flex;gap:8px">
-                <button class="btn btn-secondary" onclick="lockVault()">Lock Vault</button>
-                <button class="btn btn-secondary" onclick="appCommand('opendata')">Open Data Folder</button>
+              <div id="vault-list" style="margin-bottom:12px"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-secondary btn-sm" onclick="showNewVaultDialog()">New Vault</button>
+                <button class="btn btn-secondary btn-sm" onclick="lockVault()">Lock Vault</button>
+                <button class="btn btn-secondary btn-sm" onclick="appCommand('opendata')">Open Data Folder</button>
               </div>
             </div>
             <div class="about-info">
               <strong>VaultBox Desktop</strong><br>
-              Version <span id="about-version">0.6.0</span><br>
+              Version <span id="about-version">0.7.0</span><br>
               Offline Bitwarden-compatible password manager<br>
               Server: 127.0.0.1:8787<br><br>
               <span style="font-size:11px">Encryption: AES-256-CBC + HMAC-SHA256<br>
@@ -437,6 +488,15 @@ R"VBHTML(
 
 <!-- Hidden file input for imports -->
 <input type="file" id="file-input" style="display:none">
+
+<!-- Drag-and-drop overlay -->
+<div id="drop-overlay" style="display:none;position:fixed;inset:0;background:rgba(23,93,220,0.15);z-index:50;display:none;align-items:center;justify-content:center;pointer-events:none">
+  <div style="background:var(--bg-card);border:2px dashed var(--primary);border-radius:var(--radius-lg);padding:40px 60px;text-align:center;box-shadow:var(--shadow)">
+    <svg width="48" height="48" fill="var(--primary)" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 01.5.5v2.5a1 1 0 001 1h12a1 1 0 001-1v-2.5a.5.5 0 011 0v2.5a2 2 0 01-2 2H2a2 2 0 01-2-2v-2.5a.5.5 0 01.5-.5z"/><path d="M7.646 1.146a.5.5 0 01.708 0l3 3a.5.5 0 01-.708.708L8.5 2.707V11.5a.5.5 0 01-1 0V2.707L5.354 4.854a.5.5 0 11-.708-.708l3-3z"/></svg>
+    <div style="margin-top:12px;font-size:16px;font-weight:600;color:var(--text)">Drop file to import</div>
+    <div style="font-size:13px;color:var(--text-sec);margin-top:4px">JSON, CSV, or XML</div>
+  </div>
+</div>
 )VBHTML"
 // --- Chunk 3: JavaScript (state, API, rendering) ---
 R"VBHTML(
@@ -449,8 +509,22 @@ let selectedEntryId = null;
 let currentView = 'vault';
 let showPasswords = {};
 let logVisible = false;
+let autoLockMinutes = 15;
+let clipboardClearSeconds = 30;
+let lastActivity = Date.now();
+let clipboardTimer = null;
 
 const API = '';
+
+// Auto-lock: track user activity
+['mousemove','keydown','click','scroll','touchstart'].forEach(evt =>
+  document.addEventListener(evt, () => { lastActivity = Date.now(); }, { passive: true })
+);
+setInterval(() => {
+  if (autoLockMinutes > 0 && vault.entries.length > 0 && (Date.now() - lastActivity) > autoLockMinutes * 60000) {
+    lockVault();
+  }
+}, 15000);
 
 // =====================================================================
 // API Helpers
@@ -510,6 +584,37 @@ async function doUnlock() {
 
 // Enter key on password field
 document.getElementById('unlock-password').addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
+
+// Password strength meter
+document.getElementById('unlock-password').addEventListener('input', e => {
+  const pw = e.target.value;
+  const el = document.getElementById('pw-strength');
+  const bar = document.getElementById('pw-strength-bar');
+  const label = document.getElementById('pw-strength-label');
+  if (!pw) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (pw.length >= 16) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^a-zA-Z0-9]/.test(pw)) score++;
+  if (pw.length >= 20) score++;
+  const levels = [
+    { min:0, label:'Very Weak', color:'#cf3d3d', w:'14%' },
+    { min:2, label:'Weak', color:'#d4a72c', w:'28%' },
+    { min:3, label:'Fair', color:'#d4a72c', w:'43%' },
+    { min:4, label:'Good', color:'#6d9eeb', w:'57%' },
+    { min:5, label:'Strong', color:'#51a95b', w:'75%' },
+    { min:6, label:'Very Strong', color:'#51a95b', w:'100%' }
+  ];
+  const lvl = [...levels].reverse().find(l => score >= l.min) || levels[0];
+  bar.style.width = lvl.w;
+  bar.style.background = lvl.color;
+  label.textContent = lvl.label;
+  label.style.color = lvl.color;
+});
 
 // =====================================================================
 // Load vault data
@@ -597,11 +702,13 @@ function getFilteredEntries() {
   else if (currentFilter === 'type-4') items = items.filter(e => e.type === 4);
   else if (currentFolderId) items = items.filter(e => e.folderId === currentFolderId);
 
-  if (q) items = items.filter(e =>
-    (e.name || '').toLowerCase().includes(q) ||
-    (e.username || '').toLowerCase().includes(q) ||
-    (e.uri || '').toLowerCase().includes(q)
-  );
+  if (q) {
+    const terms = q.split(/\s+/).filter(Boolean);
+    items = items.filter(e => {
+      const haystack = [e.name, e.username, e.uri, e.notes, e.folderName].filter(Boolean).join(' ').toLowerCase();
+      return terms.every(t => haystack.includes(t));
+    });
+  }
   return items;
 }
 
@@ -661,6 +768,16 @@ function selectEntry(id) {
   if (entry.username) fields += detailField('Username', entry.username, 'username', false, true);
   if (entry.password) fields += detailField('Password', entry.password, 'password', true, true);
   if (entry.uri) fields += detailField('Website', entry.uri, 'uri', false, true, true);
+  if (entry.totp) {
+    fields += `<div class="detail-field"><div class="detail-field-label">TOTP</div>
+      <div class="detail-field-value mono" style="gap:12px">
+        <span id="totp-code" style="font-size:22px;letter-spacing:3px;font-weight:600;color:var(--primary-light)">------</span>
+        <span id="totp-timer" style="font-size:12px;color:var(--text-muted);min-width:24px"></span>
+        <div style="flex:1;height:3px;background:var(--bg-input);border-radius:2px;overflow:hidden;min-width:40px"><div id="totp-progress" style="height:100%;width:100%;background:var(--primary);transition:width 1s linear;border-radius:2px"></div></div>
+        <button class="btn-icon" onclick="copyTOTP()" title="Copy TOTP"><svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4 1.5H3a2 2 0 00-2 2V14a2 2 0 002 2h10a2 2 0 002-2V3.5a2 2 0 00-2-2h-1v1h1a1 1 0 011 1V14a1 1 0 01-1 1H3a1 1 0 01-1-1V3.5a1 1 0 011-1h1v-1z"/><path d="M9.5 1a.5.5 0 01.5.5v1a.5.5 0 01-.5.5h-3a.5.5 0 01-.5-.5v-1a.5.5 0 01.5-.5h3zm-3-1A1.5 1.5 0 005 1.5v1A1.5 1.5 0 006.5 4h3A1.5 1.5 0 0011 2.5v-1A1.5 1.5 0 009.5 0h-3z"/></svg></button>
+      </div></div>`;
+    setTimeout(() => startTOTPRefresh(id), 0);
+  }
   if (entry.notes) fields += `<div class="detail-field"><div class="detail-field-label">Notes</div><div class="detail-field-value" style="white-space:pre-wrap;font-size:13px">${esc(entry.notes)}</div></div>`;
   if (entry.updatedAt) fields += `<div class="detail-field"><div class="detail-field-label">Last Modified</div><div class="detail-field-value" style="font-size:12px;color:var(--text-sec)">${formatDate(entry.updatedAt)}</div></div>`;
 
@@ -692,7 +809,13 @@ function togglePassField(key) {
   if (selectedEntryId) selectEntry(selectedEntryId);
 }
 
+async function copyTOTP() {
+  const el = document.getElementById('totp-code');
+  if (el) copyText(el.textContent.replace(/\s/g, ''), 'TOTP code');
+}
+
 function closeDetail() {
+  if (totpInterval) { clearInterval(totpInterval); totpInterval = null; }
   selectedEntryId = null;
   document.getElementById('detail-panel').classList.remove('open');
   renderItems();
@@ -732,6 +855,7 @@ function showEntryDialog(editId) {
           </div>
         </div>
         <div class="form-group"><label id="entry-uri-label">URI</label><input class="form-input" id="entry-uri" value="${escAttr(entry?.uri||'')}" placeholder="https://"></div>
+        <div class="form-group" id="entry-totp-group"><label>TOTP Secret</label><input class="form-input" id="entry-totp" value="${escAttr(entry?.totp||'')}" placeholder="otpauth:// URI or base32 secret"></div>
       </div>
       <div class="form-group"><label>Folder</label>
         <select class="form-input" id="entry-folder">
@@ -756,6 +880,8 @@ function toggleEntryFields() {
   if (!loginFields) return;
 
   loginFields.style.display = (type === 2) ? 'none' : 'block';
+  const totpGroup = document.getElementById('entry-totp-group');
+  if (totpGroup) totpGroup.style.display = (type === 1) ? 'block' : 'none';
 
   const userLabel = document.getElementById('entry-user-label');
   const passLabel = document.getElementById('entry-pass-label');
@@ -797,6 +923,7 @@ async function saveEntry(editId) {
     password: document.getElementById('entry-password')?.value || '',
     uri: document.getElementById('entry-uri')?.value || '',
     notes: document.getElementById('entry-notes').value,
+    totp: document.getElementById('entry-totp')?.value || '',
     folderId: document.getElementById('entry-folder').value
   };
 
@@ -940,7 +1067,7 @@ function showView(view) {
   document.getElementById('view-settings').style.display = view === 'settings' ? 'block' : 'none';
 
   if (view === 'generator') regenerate();
-  if (view === 'settings') { loadStartupState(); loadBackupState(); }
+  if (view === 'settings') { loadStartupState(); loadBackupState(); loadSecuritySettings(); loadVaultList(); }
   if (view !== 'vault') closeDetail();
 }
 
@@ -1140,9 +1267,8 @@ function launchUri(uri) {
 async function copyText(text, label) {
   try {
     await navigator.clipboard.writeText(text);
-    toast(`${label} copied`);
+    toast(`${label} copied` + (clipboardClearSeconds > 0 ? ` (clears in ${clipboardClearSeconds}s)` : ''));
   } catch (e) {
-    // Fallback
     const ta = document.createElement('textarea');
     ta.value = text;
     document.body.appendChild(ta);
@@ -1150,6 +1276,14 @@ async function copyText(text, label) {
     document.execCommand('copy');
     document.body.removeChild(ta);
     toast(`${label} copied`);
+  }
+  // Auto-clear clipboard
+  if (clipboardClearSeconds > 0) {
+    if (clipboardTimer) clearTimeout(clipboardTimer);
+    clipboardTimer = setTimeout(async () => {
+      try { await navigator.clipboard.writeText(''); } catch(e) {}
+      clipboardTimer = null;
+    }, clipboardClearSeconds * 1000);
   }
 }
 
@@ -1170,6 +1304,226 @@ function formatDate(s) {
 }
 
 // =====================================================================
+// TOTP
+// =====================================================================
+function base32Decode(s) {
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  s = s.replace(/[= ]/g, '').toUpperCase();
+  let bits = '', bytes = [];
+  for (const c of s) { const v = alpha.indexOf(c); if (v >= 0) bits += v.toString(2).padStart(5, '0'); }
+  for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.substr(i, 8), 2));
+  return new Uint8Array(bytes);
+}
+
+async function hmacSha1(key, msg) {
+  const ck = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', ck, msg));
+}
+
+async function computeTOTP(secret, period = 30, digits = 6) {
+  const key = base32Decode(secret);
+  const time = Math.floor(Date.now() / 1000 / period);
+  const msg = new Uint8Array(8);
+  let t = time;
+  for (let i = 7; i >= 0; i--) { msg[i] = t & 0xff; t >>= 8; }
+  const hash = await hmacSha1(key, msg);
+  const offset = hash[hash.length - 1] & 0xf;
+  const code = ((hash[offset] & 0x7f) << 24 | hash[offset+1] << 16 | hash[offset+2] << 8 | hash[offset+3]) % Math.pow(10, digits);
+  return String(code).padStart(digits, '0');
+}
+
+function parseTOTPSecret(totp) {
+  if (!totp) return null;
+  if (totp.startsWith('otpauth://')) {
+    try {
+      const url = new URL(totp);
+      return { secret: url.searchParams.get('secret'), period: parseInt(url.searchParams.get('period') || '30'), digits: parseInt(url.searchParams.get('digits') || '6') };
+    } catch(e) { return null; }
+  }
+  return { secret: totp.replace(/\s/g, ''), period: 30, digits: 6 };
+}
+
+let totpInterval = null;
+function startTOTPRefresh(entryId) {
+  if (totpInterval) clearInterval(totpInterval);
+  const entry = vault.entries.find(e => e.id === entryId);
+  if (!entry?.totp) return;
+  const params = parseTOTPSecret(entry.totp);
+  if (!params?.secret) return;
+  async function update() {
+    const code = await computeTOTP(params.secret, params.period, params.digits);
+    const el = document.getElementById('totp-code');
+    if (el) {
+      el.textContent = code.slice(0, 3) + ' ' + code.slice(3);
+      const remaining = params.period - (Math.floor(Date.now() / 1000) % params.period);
+      const progress = document.getElementById('totp-progress');
+      if (progress) {
+        progress.style.width = (remaining / params.period * 100) + '%';
+        progress.style.background = remaining <= 5 ? 'var(--danger)' : 'var(--primary)';
+      }
+      const timer = document.getElementById('totp-timer');
+      if (timer) timer.textContent = remaining + 's';
+    }
+  }
+  update();
+  totpInterval = setInterval(update, 1000);
+}
+
+// =====================================================================
+// Theme
+// =====================================================================
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('vaultbox-theme', theme);
+  const sel = document.getElementById('theme-select');
+  if (sel) sel.value = theme;
+}
+(function() {
+  const saved = localStorage.getItem('vaultbox-theme');
+  if (saved) setTheme(saved);
+})();
+
+)VBHTML"
+// --- Chunk 8: JavaScript (settings, multi-vault, drag-drop, init) ---
+R"VBHTML(
+// =====================================================================
+// Security Settings
+// =====================================================================
+async function loadSecuritySettings() {
+  try {
+    const data = await api('/api/vaultbox/security');
+    autoLockMinutes = data.autoLockMinutes || 0;
+    clipboardClearSeconds = data.clipboardClearSeconds || 0;
+    const als = document.getElementById('autolock-select');
+    const cls = document.getElementById('clipboard-select');
+    if (als) als.value = String(autoLockMinutes);
+    if (cls) cls.value = String(clipboardClearSeconds);
+  } catch(e) {}
+}
+
+async function setAutoLock(val) {
+  autoLockMinutes = parseInt(val);
+  try { await api('/api/vaultbox/security', { method: 'POST', body: JSON.stringify({ autoLockMinutes: autoLockMinutes }) }); } catch(e) {}
+  toast(autoLockMinutes > 0 ? `Auto-lock: ${autoLockMinutes} min` : 'Auto-lock disabled');
+}
+
+async function setClipboardClear(val) {
+  clipboardClearSeconds = parseInt(val);
+  try { await api('/api/vaultbox/security', { method: 'POST', body: JSON.stringify({ clipboardClearSeconds: clipboardClearSeconds }) }); } catch(e) {}
+  toast(clipboardClearSeconds > 0 ? `Clipboard clears after ${clipboardClearSeconds}s` : 'Clipboard auto-clear disabled');
+}
+
+// =====================================================================
+// Update Check
+// =====================================================================
+async function checkForUpdate() {
+  const btn = document.getElementById('update-btn');
+  const status = document.getElementById('update-status');
+  btn.disabled = true;
+  btn.textContent = 'Checking...';
+  try {
+    const res = await fetch('https://api.github.com/repos/SysAdminDoc/VaultBox/releases/latest');
+    if (!res.ok) throw new Error('GitHub API error');
+    const release = await res.json();
+    const latest = release.tag_name.replace(/^v/, '');
+    const cur = document.getElementById('about-version')?.textContent || '0.0.0';
+    if (latest !== cur && latest > cur) {
+      status.innerHTML = `Update available: <strong style="color:var(--success)">${latest}</strong> <a href="#" onclick="appCommand(\'launch:${release.html_url}\');return false" style="margin-left:8px">Download</a>`;
+    } else {
+      status.textContent = 'You are up to date (' + cur + ')';
+    }
+  } catch(e) {
+    status.textContent = 'Could not check for updates';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Check Now';
+}
+
+// =====================================================================
+// Multi-Vault
+// =====================================================================
+async function loadVaultList() {
+  try {
+    const data = await api('/api/vaultbox/vaults');
+    const el = document.getElementById('vault-list');
+    if (!el || !data.vaults?.length) return;
+    el.innerHTML = data.vaults.map(v =>
+      `<div style="display:flex;align-items:center;padding:6px 0;gap:8px;font-size:13px">
+        <span style="color:${v.active ? 'var(--primary-light)' : 'var(--text-sec)'};font-weight:${v.active ? '600' : '400'}">${esc(v.file)}</span>
+        <span style="font-size:11px;color:var(--text-muted)">${(v.size / 1024).toFixed(0)} KB</span>
+        ${v.active ? '<span style="font-size:11px;color:var(--success);margin-left:auto">Active</span>' : `<button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="switchVault('${escAttr(v.file)}')">Switch</button>`}
+      </div>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function switchVault(file) {
+  try {
+    await api('/api/vaultbox/vaults/switch', { method: 'POST', body: JSON.stringify({ file }) });
+    vault = { entries: [], folders: [] };
+    selectedEntryId = null;
+    document.getElementById('main-app').style.display = 'none';
+    document.getElementById('unlock-screen').style.display = 'flex';
+    document.getElementById('unlock-password').value = '';
+    toast('Switched to ' + file);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function showNewVaultDialog() {
+  openModal(`<div class="modal-header"><h3>Create New Vault</h3><button class="btn-icon" onclick="closeModal()"><svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.647-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg></button></div>
+    <div class="modal-body"><div class="form-group"><label>Vault Name</label><input class="form-input" id="new-vault-name" placeholder="my-vault"></div></div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="createNewVault()">Create</button></div>`);
+}
+
+async function createNewVault() {
+  const name = document.getElementById('new-vault-name')?.value?.trim();
+  if (!name) return;
+  try {
+    await api('/api/vaultbox/vaults/create', { method: 'POST', body: JSON.stringify({ name }) });
+    closeModal();
+    vault = { entries: [], folders: [] };
+    selectedEntryId = null;
+    document.getElementById('main-app').style.display = 'none';
+    document.getElementById('unlock-screen').style.display = 'flex';
+    toast('Vault created: ' + name + '.db');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// =====================================================================
+// Drag & Drop Import
+// =====================================================================
+let dragCounter = 0;
+document.addEventListener('dragenter', e => {
+  e.preventDefault();
+  if (++dragCounter === 1) document.getElementById('drop-overlay').style.display = 'flex';
+});
+document.addEventListener('dragleave', e => {
+  e.preventDefault();
+  if (--dragCounter === 0) document.getElementById('drop-overlay').style.display = 'none';
+});
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  dragCounter = 0;
+  document.getElementById('drop-overlay').style.display = 'none';
+  if (!vault.entries && !vault.folders) { toast('Unlock vault first', 'error'); return; }
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  const name = file.name.toLowerCase();
+  let type = '';
+  if (name.endsWith('.json')) type = 'bitwarden_json';
+  else if (name.endsWith('.csv')) type = name.includes('chrome') ? 'chrome_csv' : 'bitwarden_csv';
+  else if (name.endsWith('.xml')) type = 'keepass_xml';
+  else { toast('Unsupported file type. Use JSON, CSV, or XML.', 'error'); return; }
+  const text = await file.text();
+  try {
+    const res = await api('/api/vaultbox/import/' + type, { method: 'POST', body: text });
+    await loadVault();
+    toast('Imported ' + (res.count || 0) + ' items from ' + file.name);
+  } catch(e) { toast(e.message, 'error'); }
+});
+
+// =====================================================================
 // Init
 // =====================================================================
 async function init() {
@@ -1183,6 +1537,7 @@ async function init() {
       document.getElementById('unlock-email').value = status.email;
     }
   } catch (e) {}
+  loadSecuritySettings();
   pollLogs();
 }
 

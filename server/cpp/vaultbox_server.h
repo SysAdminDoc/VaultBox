@@ -72,7 +72,7 @@ namespace fs = std::filesystem;
 // ============================================================================
 // Version & Config
 // ============================================================================
-static const char* APP_VERSION = "0.6.0";
+static const char* APP_VERSION = "0.7.0";
 static const char* HOST = "127.0.0.1";
 static const int PORT = 8787;
 static const int TOKEN_EXPIRY_HOURS = 24 * 30;
@@ -87,6 +87,7 @@ inline std::atomic<bool> g_shutdown{false};
 inline httplib::Server* g_server = nullptr;
 inline HWND g_main_hwnd = nullptr;
 inline NOTIFYICONDATAW g_nid = {};
+inline bool g_portable_mode = false;
 
 // Decrypted vault state
 struct DecryptedEntry {
@@ -96,6 +97,7 @@ struct DecryptedEntry {
     std::string password;
     std::string uri;
     std::string notes;
+    std::string totp;
     std::string folderId;
     std::string folderName;
     int type = 1; // 1=Login, 2=SecureNote, 3=Card, 4=Identity
@@ -413,11 +415,20 @@ inline bool set_auto_backup(bool enable) {
     return true;
 }
 
+inline void wal_checkpoint() {
+    sqlite3* db = nullptr;
+    if (sqlite3_open(g_db_path.string().c_str(), &db) == SQLITE_OK) {
+        sqlite3_wal_checkpoint_v2(db, nullptr, SQLITE_CHECKPOINT_TRUNCATE, nullptr, nullptr);
+        sqlite3_close(db);
+    }
+}
+
 inline json do_backup_now() {
     std::string backupDir = get_backup_path();
     if (backupDir.empty()) return {{"success", false}, {"error", "No backup folder configured"}};
     fs::path dest = fs::path(backupDir) / "vault.db";
     try {
+        wal_checkpoint(); // Ensure all data is in the main db file
         fs::create_directories(backupDir);
         fs::copy_file(g_db_path, dest, fs::copy_options::overwrite_existing);
         vb_log("Vault backed up to " + dest.string());
@@ -470,6 +481,48 @@ inline void trigger_auto_backup() {
     if (get_auto_backup() && !get_backup_path().empty()) {
         std::thread([]() { do_backup_now(); }).detach();
     }
+}
+
+// Auto-lock timeout (minutes, 0 = disabled)
+inline int get_autolock_minutes() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return 15; // default 15 minutes
+    DWORD val = 15, size = sizeof(val), type = 0;
+    if (RegQueryValueExW(hKey, L"AutoLockMinutes", nullptr, &type, (BYTE*)&val, &size) != ERROR_SUCCESS)
+        val = 15;
+    RegCloseKey(hKey);
+    return (int)val;
+}
+
+inline void set_autolock_minutes(int minutes) {
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        return;
+    DWORD val = (DWORD)minutes;
+    RegSetValueExW(hKey, L"AutoLockMinutes", 0, REG_DWORD, (const BYTE*)&val, sizeof(val));
+    RegCloseKey(hKey);
+}
+
+// Clipboard auto-clear seconds (0 = disabled)
+inline int get_clipboard_clear_seconds() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return 30;
+    DWORD val = 30, size = sizeof(val), type = 0;
+    if (RegQueryValueExW(hKey, L"ClipboardClearSeconds", nullptr, &type, (BYTE*)&val, &size) != ERROR_SUCCESS)
+        val = 30;
+    RegCloseKey(hKey);
+    return (int)val;
+}
+
+inline void set_clipboard_clear_seconds(int seconds) {
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        return;
+    DWORD val = (DWORD)seconds;
+    RegSetValueExW(hKey, L"ClipboardClearSeconds", 0, REG_DWORD, (const BYTE*)&val, sizeof(val));
+    RegCloseKey(hKey);
 }
 
 inline bool set_startup_enabled(bool enable) {

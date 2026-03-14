@@ -392,6 +392,8 @@ inline bool unlock_vault(const std::string& password, const std::string& email) 
                 if (firstUri.contains("uri") && firstUri["uri"].is_string())
                     de.uri = decrypt_encstring(firstUri["uri"].get<std::string>(), userKey.encKey.data(), userKey.macKey.data());
             }
+            if (login.contains("totp") && login["totp"].is_string())
+                de.totp = decrypt_encstring(login["totp"].get<std::string>(), userKey.encKey.data(), userKey.macKey.data());
         }
 
         // Decrypt card fields
@@ -445,6 +447,7 @@ inline bool save_entry(DecryptedEntry& de, bool isNew) {
         if (!de.uri.empty()) {
             login["uris"] = json::array({json({{"uri", encrypt_to_encstring(de.uri, ek, mk)}, {"match", nullptr}})});
         }
+        if (!de.totp.empty()) login["totp"] = encrypt_to_encstring(de.totp, ek, mk);
         data["login"] = login;
     } else if (de.type == 3) { // Card
         json card;
@@ -585,6 +588,8 @@ inline void refresh_vault() {
                 if (firstUri.contains("uri") && firstUri["uri"].is_string())
                     de.uri = decrypt_encstring(firstUri["uri"].get<std::string>(), encKey.data(), macKey.data());
             }
+            if (login.contains("totp") && login["totp"].is_string())
+                de.totp = decrypt_encstring(login["totp"].get<std::string>(), encKey.data(), macKey.data());
         }
         if (data.contains("card") && data["card"].is_object()) {
             auto& card = data["card"];

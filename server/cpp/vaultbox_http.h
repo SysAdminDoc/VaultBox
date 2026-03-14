@@ -78,7 +78,7 @@ inline void setup_routes(httplib::Server& svr) {
             entries.push_back({
                 {"id", e.id}, {"name", e.name}, {"username", e.username},
                 {"password", e.password}, {"uri", e.uri}, {"notes", e.notes},
-                {"type", e.type}, {"favorite", e.favorite},
+                {"totp", e.totp}, {"type", e.type}, {"favorite", e.favorite},
                 {"folderId", e.folderId}, {"folderName", e.folderName},
                 {"updatedAt", e.updatedAt}
             });
@@ -101,6 +101,7 @@ inline void setup_routes(httplib::Server& svr) {
         de.password = body.value("password", "");
         de.uri = body.value("uri", "");
         de.notes = body.value("notes", "");
+        de.totp = body.value("totp", "");
         de.folderId = body.value("folderId", "");
         de.favorite = body.value("favorite", false);
         if (VBCrypto::save_entry(de, true)) {
@@ -124,6 +125,7 @@ inline void setup_routes(httplib::Server& svr) {
         de.password = body.value("password", "");
         de.uri = body.value("uri", "");
         de.notes = body.value("notes", "");
+        de.totp = body.value("totp", "");
         de.folderId = body.value("folderId", "");
         de.favorite = body.value("favorite", false);
         if (VBCrypto::save_entry(de, false)) {
@@ -268,6 +270,23 @@ inline void setup_routes(httplib::Server& svr) {
         send_json(res, {{"success", ok}, {"enabled", get_startup_enabled()}});
     });
 
+    // --- Security Settings ---
+    svr.Get("/api/vaultbox/security", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, {
+            {"autoLockMinutes", get_autolock_minutes()},
+            {"clipboardClearSeconds", get_clipboard_clear_seconds()}
+        });
+    });
+    svr.Post("/api/vaultbox/security", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        if (body.contains("autoLockMinutes")) set_autolock_minutes(body["autoLockMinutes"].get<int>());
+        if (body.contains("clipboardClearSeconds")) set_clipboard_clear_seconds(body["clipboardClearSeconds"].get<int>());
+        send_json(res, {
+            {"autoLockMinutes", get_autolock_minutes()},
+            {"clipboardClearSeconds", get_clipboard_clear_seconds()}
+        });
+    });
+
     // --- Cloud Backup ---
     svr.Get("/api/vaultbox/backup", [](const httplib::Request&, httplib::Response& res) {
         send_json(res, {
@@ -315,6 +334,56 @@ inline void setup_routes(httplib::Server& svr) {
             }
         }
         send_json(res, {{"folders", folders}});
+    });
+
+    // --- Multi-Vault ---
+    svr.Get("/api/vaultbox/vaults", [](const httplib::Request&, httplib::Response& res) {
+        json vaults = json::array();
+        for (auto& entry : fs::directory_iterator(g_data_dir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".db") {
+                std::string name = entry.path().stem().string();
+                bool active = (entry.path() == g_db_path);
+                auto sz = fs::file_size(entry.path());
+                vaults.push_back({{"name", name}, {"file", entry.path().filename().string()}, {"active", active}, {"size", sz}});
+            }
+        }
+        send_json(res, {{"vaults", vaults}, {"dataDir", g_data_dir.string()}});
+    });
+    svr.Post("/api/vaultbox/vaults/switch", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        std::string file = body.value("file", "");
+        if (file.empty() || file.find("..") != std::string::npos || file.find('/') != std::string::npos || file.find('\\') != std::string::npos) {
+            send_error(res, 400, "Invalid vault file name"); return;
+        }
+        fs::path newPath = g_data_dir / file;
+        if (!newPath.has_extension() || newPath.extension() != ".db") newPath += ".db";
+        g_vault.clear();
+        g_db_path = newPath;
+        init_db(); // Create tables if new vault
+        vb_log("Switched to vault: " + newPath.filename().string());
+        send_json(res, {{"success", true}, {"file", newPath.filename().string()}});
+    });
+    svr.Post("/api/vaultbox/vaults/create", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        std::string name = body.value("name", "");
+        if (name.empty()) { send_error(res, 400, "Vault name required"); return; }
+        // Sanitize name
+        std::string safe;
+        for (char c : name) { if (isalnum(c) || c == '-' || c == '_') safe += c; }
+        if (safe.empty()) safe = "vault";
+        fs::path newPath = g_data_dir / (safe + ".db");
+        if (fs::exists(newPath)) { send_error(res, 400, "Vault already exists"); return; }
+        g_vault.clear();
+        g_db_path = newPath;
+        init_db();
+        vb_log("Created new vault: " + newPath.filename().string());
+        send_json(res, {{"success", true}, {"file", newPath.filename().string()}});
+    });
+
+    // --- Update Check ---
+    svr.Get("/api/vaultbox/update-check", [](const httplib::Request&, httplib::Response& res) {
+        // Return current version; the SPA JS will fetch GitHub releases API directly
+        send_json(res, {{"currentVersion", APP_VERSION}});
     });
 
     // --- Launch URI (fallback for non-WebView2 contexts) ---

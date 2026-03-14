@@ -18,6 +18,22 @@ inline bool g_webview_ready = false;
 // ============================================================================
 // System Tray
 // ============================================================================
+inline void update_tray_tooltip() {
+    std::wstring tip = L"VaultBox v" + to_wstr(APP_VERSION);
+    if (g_portable_mode) tip += L" (Portable)";
+    std::string lastBackup = get_last_backup_time();
+    if (!lastBackup.empty()) {
+        tip += L"\nBackup: " + to_wstr(lastBackup);
+    }
+    if (g_vault.unlocked) {
+        tip += L"\nVault: unlocked (" + std::to_wstring(g_vault.entries.size()) + L" items)";
+    } else {
+        tip += L"\nVault: locked";
+    }
+    wcsncpy_s(g_nid.szTip, tip.c_str(), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &g_nid);
+}
+
 inline void create_tray_icon(HWND hwnd) {
     g_nid = {};
     g_nid.cbSize = sizeof(g_nid);
@@ -28,6 +44,7 @@ inline void create_tray_icon(HWND hwnd) {
     g_nid.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_VAULTBOX));
     wcscpy_s(g_nid.szTip, L"VaultBox Desktop");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
+    update_tray_tooltip();
 }
 
 inline void remove_tray_icon() {
@@ -193,6 +210,10 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
 
+    case WM_TIMER:
+        if (wp == 1) update_tray_tooltip();
+        return 0;
+
     case WM_TRAYICON:
         if (lp == WM_LBUTTONDBLCLK) {
             ShowWindow(hwnd, SW_SHOW);
@@ -274,6 +295,7 @@ inline HWND create_main_window(HINSTANCE hInst) {
 
     g_main_hwnd = hwnd;
     create_tray_icon(hwnd);
+    SetTimer(hwnd, 1, 10000, nullptr); // Update tray tooltip every 10s
 
     return hwnd;
 }
