@@ -1,7 +1,9 @@
 {
   "devFlags": {
     "managedEnvironment": {
-      "base": "https://localhost:8080"
+      "base": "http://127.0.0.1:8787",
+      "api": "http://127.0.0.1:8787",
+      "identity": "http://127.0.0.1:8787"
     },
     "skipWelcomeOnInstall": true
   }

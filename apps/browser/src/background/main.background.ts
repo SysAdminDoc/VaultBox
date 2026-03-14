@@ -129,7 +129,7 @@ import {
 import { AppIdService as AppIdServiceAbstraction } from "@bitwarden/common/platform/abstractions/app-id.service";
 import { ConfigApiServiceAbstraction } from "@bitwarden/common/platform/abstractions/config/config-api.service.abstraction";
 import { ConfigService } from "@bitwarden/common/platform/abstractions/config/config.service";
-import { RegionConfig } from "@bitwarden/common/platform/abstractions/environment.service";
+import { Region, RegionConfig } from "@bitwarden/common/platform/abstractions/environment.service";
 import { Fido2ActiveRequestManager as Fido2ActiveRequestManagerAbstraction } from "@bitwarden/common/platform/abstractions/fido2/fido2-active-request-manager.abstraction";
 import { Fido2AuthenticatorService as Fido2AuthenticatorServiceAbstraction } from "@bitwarden/common/platform/abstractions/fido2/fido2-authenticator.service.abstraction";
 import { Fido2ClientService as Fido2ClientServiceAbstraction } from "@bitwarden/common/platform/abstractions/fido2/fido2-client.service.abstraction";
@@ -1591,6 +1591,18 @@ export default class MainBackground {
     await Promise.all(setUserKeyInMemoryPromises);
 
     await (this.i18nService as I18nService).init();
+
+    // VaultBox: Force environment to local server on every startup
+    await this.environmentService.setEnvironment(Region.SelfHosted, {
+      base: "http://127.0.0.1:8787",
+      api: "http://127.0.0.1:8787",
+      identity: "http://127.0.0.1:8787",
+      icons: "http://127.0.0.1:8787/icons",
+      notifications: "http://127.0.0.1:8787/notifications",
+      events: "http://127.0.0.1:8787/events",
+      webVault: "http://127.0.0.1:8787",
+    });
+
     // VaultBox: Event upload init skipped (NoopEventUploadService)
 
     this.popupViewCacheBackgroundService.startObservingMessages();
