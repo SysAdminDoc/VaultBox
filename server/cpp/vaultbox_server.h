@@ -114,6 +114,8 @@ inline NOTIFYICONDATAW g_nid = {};
 inline HFONT g_font = nullptr;
 inline HFONT g_font_bold = nullptr;
 inline HFONT g_font_mono = nullptr;
+inline HFONT g_font_title = nullptr;    // Large title font for dialogs
+inline HFONT g_font_detail = nullptr;   // Slightly larger for detail panel values
 
 // Theme brushes
 inline HBRUSH g_br_base = nullptr;
@@ -121,6 +123,8 @@ inline HBRUSH g_br_mantle = nullptr;
 inline HBRUSH g_br_surface0 = nullptr;
 inline HBRUSH g_br_surface1 = nullptr;
 inline HBRUSH g_br_crust = nullptr;
+inline HBRUSH g_br_blue = nullptr;
+inline HBRUSH g_br_surface2 = nullptr;
 
 // Decrypted vault state
 struct DecryptedEntry {
@@ -396,18 +400,45 @@ inline void init_fonts() {
     ncm.cbSize = sizeof(ncm);
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
 
-    ncm.lfMessageFont.lfHeight = -14;
+    // Base UI font - Segoe UI 10pt
+    ncm.lfMessageFont.lfHeight = -15;
+    ncm.lfMessageFont.lfWeight = FW_NORMAL;
+    ncm.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
     wcscpy_s(ncm.lfMessageFont.lfFaceName, L"Segoe UI");
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
 
-    ncm.lfMessageFont.lfWeight = FW_BOLD;
+    // Bold variant
+    ncm.lfMessageFont.lfWeight = FW_SEMIBOLD;
     g_font_bold = CreateFontIndirectW(&ncm.lfMessageFont);
 
+    // Title font - large, for dialog headers
+    LOGFONTW title = ncm.lfMessageFont;
+    title.lfHeight = -28;
+    title.lfWeight = FW_BOLD;
+    title.lfQuality = CLEARTYPE_QUALITY;
+    wcscpy_s(title.lfFaceName, L"Segoe UI");
+    g_font_title = CreateFontIndirectW(&title);
+
+    // Detail value font - slightly larger for readability
+    LOGFONTW detail = ncm.lfMessageFont;
+    detail.lfHeight = -15;
+    detail.lfWeight = FW_NORMAL;
+    detail.lfQuality = CLEARTYPE_QUALITY;
+    wcscpy_s(detail.lfFaceName, L"Segoe UI");
+    g_font_detail = CreateFontIndirectW(&detail);
+
+    // Monospace font for passwords and log
     LOGFONTW mono = {};
-    mono.lfHeight = -13;
+    mono.lfHeight = -14;
     mono.lfWeight = FW_NORMAL;
-    wcscpy_s(mono.lfFaceName, L"Consolas");
+    mono.lfQuality = CLEARTYPE_QUALITY;
+    wcscpy_s(mono.lfFaceName, L"Cascadia Mono");
     g_font_mono = CreateFontIndirectW(&mono);
+    // Fallback to Consolas if Cascadia Mono unavailable
+    if (!g_font_mono) {
+        wcscpy_s(mono.lfFaceName, L"Consolas");
+        g_font_mono = CreateFontIndirectW(&mono);
+    }
 }
 
 // Create theme brushes
@@ -416,16 +447,14 @@ inline void init_brushes() {
     g_br_mantle = CreateSolidBrush(Theme::Mantle);
     g_br_surface0 = CreateSolidBrush(Theme::Surface0);
     g_br_surface1 = CreateSolidBrush(Theme::Surface1);
+    g_br_surface2 = CreateSolidBrush(Theme::Surface2);
     g_br_crust = CreateSolidBrush(Theme::Crust);
+    g_br_blue = CreateSolidBrush(Theme::Blue);
 }
 
 inline void cleanup_gdi() {
-    if (g_font) DeleteObject(g_font);
-    if (g_font_bold) DeleteObject(g_font_bold);
-    if (g_font_mono) DeleteObject(g_font_mono);
-    if (g_br_base) DeleteObject(g_br_base);
-    if (g_br_mantle) DeleteObject(g_br_mantle);
-    if (g_br_surface0) DeleteObject(g_br_surface0);
-    if (g_br_surface1) DeleteObject(g_br_surface1);
-    if (g_br_crust) DeleteObject(g_br_crust);
+    for (HFONT* f : {&g_font, &g_font_bold, &g_font_mono, &g_font_title, &g_font_detail})
+        if (*f) { DeleteObject(*f); *f = nullptr; }
+    for (HBRUSH* b : {&g_br_base, &g_br_mantle, &g_br_surface0, &g_br_surface1, &g_br_surface2, &g_br_crust, &g_br_blue})
+        if (*b) { DeleteObject(*b); *b = nullptr; }
 }

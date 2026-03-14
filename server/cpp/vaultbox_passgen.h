@@ -1,4 +1,4 @@
-// VaultBox Desktop - Password Generator Dialog
+// VaultBox Desktop - Password Generator Dialog (premium styled)
 #pragma once
 #include "vaultbox_server.h"
 #include "vaultbox_crypto.h"
@@ -11,7 +11,7 @@ struct PassGenOptions {
     bool lower = true;
     bool digits = true;
     bool symbols = true;
-    bool ambiguous = false; // include ambiguous chars (0OIl1|)
+    bool ambiguous = false;
 };
 
 inline std::string generate_password(const PassGenOptions& opts) {
@@ -43,140 +43,112 @@ inline std::string generate_password(const PassGenOptions& opts) {
 // Dialog state
 static PassGenOptions s_opts;
 static std::string s_preview;
-static std::string* s_target = nullptr; // if non-null, put password here on "Use"
+static std::string* s_target = nullptr;
 
-inline void update_preview(HWND dlg) {
-    s_preview = generate_password(s_opts);
-    SetWindowTextW(GetDlgItem(dlg, IDC_PG_PREVIEW), to_wstr(s_preview).c_str());
-    // Update length label
-    wchar_t buf[32];
-    swprintf_s(buf, L"Length: %d", s_opts.length);
-    SetWindowTextW(GetDlgItem(dlg, IDC_PG_LENGTH_LABEL), buf);
-}
+// Forward declaration of button subclass from vaultbox_gui.h
+// We'll use a local version here to avoid circular dependency
+static LRESULT CALLBACK pg_btn_subclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                         UINT_PTR subId, DWORD_PTR refData) {
+    bool isAccent = (refData == 1);
 
-inline INT_PTR CALLBACK passgen_dlgproc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
-    case WM_INITDIALOG: {
-        // Dark theme
-        BOOL dark = TRUE;
-        DwmSetWindowAttribute(dlg, 20, &dark, sizeof(dark));
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        HDC hdc = BeginPaint(hwnd, &ps);
+        RECT rc;
+        GetClientRect(hwnd, &rc);
 
-        // Init controls from options
-        SendDlgItemMessageW(dlg, IDC_PG_LENGTH_SLIDER, TBM_SETRANGE, TRUE, MAKELPARAM(4, 128));
-        SendDlgItemMessageW(dlg, IDC_PG_LENGTH_SLIDER, TBM_SETPOS, TRUE, s_opts.length);
+        bool hover = GetProp(hwnd, L"vb_hover") != nullptr;
+        bool pressed = hover && (GetAsyncKeyState(VK_LBUTTON) & 0x8000);
+        bool disabled = !IsWindowEnabled(hwnd);
 
-        CheckDlgButton(dlg, IDC_PG_UPPER, s_opts.upper ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(dlg, IDC_PG_LOWER, s_opts.lower ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(dlg, IDC_PG_DIGITS, s_opts.digits ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(dlg, IDC_PG_SYMBOLS, s_opts.symbols ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(dlg, IDC_PG_AMBIGUOUS, s_opts.ambiguous ? BST_CHECKED : BST_UNCHECKED);
-
-        // Set fonts
-        EnumChildWindows(dlg, [](HWND child, LPARAM) -> BOOL {
-            SendMessage(child, WM_SETFONT, (WPARAM)g_font, TRUE);
-            return TRUE;
-        }, 0);
-        SendDlgItemMessage(dlg, IDC_PG_PREVIEW, WM_SETFONT, (WPARAM)g_font_mono, TRUE);
-
-        update_preview(dlg);
-
-        // Show "Use" button only if we have a target
-        if (!s_target) ShowWindow(GetDlgItem(dlg, IDC_PG_USE), SW_HIDE);
-
-        return TRUE;
-    }
-
-    case WM_HSCROLL: {
-        if ((HWND)lp == GetDlgItem(dlg, IDC_PG_LENGTH_SLIDER)) {
-            s_opts.length = (int)SendDlgItemMessageW(dlg, IDC_PG_LENGTH_SLIDER, TBM_GETPOS, 0, 0);
-            update_preview(dlg);
+        COLORREF bgColor, textColor, borderColor;
+        if (disabled) {
+            bgColor = Theme::Surface0; textColor = Theme::Overlay0; borderColor = Theme::Surface1;
+        } else if (isAccent) {
+            bgColor = pressed ? RGB(107, 150, 220) : (hover ? RGB(157, 200, 255) : Theme::Blue);
+            textColor = Theme::Crust;
+            borderColor = pressed ? RGB(97, 140, 210) : Theme::Blue;
+        } else {
+            bgColor = pressed ? Theme::Surface2 : (hover ? Theme::Surface1 : Theme::Surface0);
+            textColor = Theme::Text;
+            borderColor = hover ? Theme::Overlay0 : Theme::Surface1;
         }
-        return TRUE;
+
+        HBRUSH bg = CreateSolidBrush(bgColor);
+        HPEN pen = CreatePen(PS_SOLID, 1, borderColor);
+        HBRUSH oldBr = (HBRUSH)SelectObject(hdc, bg);
+        HPEN oldPen = (HPEN)SelectObject(hdc, pen);
+        RoundRect(hdc, rc.left, rc.top, rc.right, rc.bottom, 8, 8);
+        SelectObject(hdc, oldBr);
+        SelectObject(hdc, oldPen);
+        DeleteObject(bg);
+        DeleteObject(pen);
+
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, textColor);
+        SelectObject(hdc, g_font);
+        wchar_t text[256] = {};
+        GetWindowTextW(hwnd, text, 256);
+        DrawTextW(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+        EndPaint(hwnd, &ps);
+        return 0;
     }
-
-    case WM_COMMAND:
-        switch (LOWORD(wp)) {
-        case IDC_PG_UPPER:
-        case IDC_PG_LOWER:
-        case IDC_PG_DIGITS:
-        case IDC_PG_SYMBOLS:
-        case IDC_PG_AMBIGUOUS:
-            s_opts.upper = IsDlgButtonChecked(dlg, IDC_PG_UPPER) == BST_CHECKED;
-            s_opts.lower = IsDlgButtonChecked(dlg, IDC_PG_LOWER) == BST_CHECKED;
-            s_opts.digits = IsDlgButtonChecked(dlg, IDC_PG_DIGITS) == BST_CHECKED;
-            s_opts.symbols = IsDlgButtonChecked(dlg, IDC_PG_SYMBOLS) == BST_CHECKED;
-            s_opts.ambiguous = IsDlgButtonChecked(dlg, IDC_PG_AMBIGUOUS) == BST_CHECKED;
-            update_preview(dlg);
-            return TRUE;
-
-        case IDC_PG_GENERATE:
-            update_preview(dlg);
-            return TRUE;
-
-        case IDC_PG_COPY:
-            if (OpenClipboard(dlg)) {
-                EmptyClipboard();
-                size_t sz = s_preview.size() + 1;
-                HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, sz);
-                if (hg) {
-                    memcpy(GlobalLock(hg), s_preview.c_str(), sz);
-                    GlobalUnlock(hg);
-                    SetClipboardData(CF_TEXT, hg);
-                }
-                CloseClipboard();
-                // Auto-clear clipboard after 30 seconds
-                SetTimer(dlg, 9999, 30000, [](HWND h, UINT, UINT_PTR id, DWORD) {
-                    if (OpenClipboard(h)) { EmptyClipboard(); CloseClipboard(); }
-                    KillTimer(h, id);
-                });
-            }
-            return TRUE;
-
-        case IDC_PG_USE:
-            if (s_target) *s_target = s_preview;
-            EndDialog(dlg, IDOK);
-            return TRUE;
-
-        case IDC_PG_OK:
-        case IDCANCEL:
-            EndDialog(dlg, IDCANCEL);
-            return TRUE;
+    case WM_MOUSEMOVE: {
+        if (!GetProp(hwnd, L"vb_hover")) {
+            SetProp(hwnd, L"vb_hover", (HANDLE)1);
+            TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+            TrackMouseEvent(&tme);
+            InvalidateRect(hwnd, nullptr, FALSE);
         }
-        break;
-
-    case WM_CTLCOLORDLG:
-    case WM_CTLCOLORSTATIC:
-        SetTextColor((HDC)wp, Theme::Text);
-        SetBkColor((HDC)wp, Theme::Base);
-        return (INT_PTR)g_br_base;
-
-    case WM_CTLCOLOREDIT:
-        SetTextColor((HDC)wp, Theme::Text);
-        SetBkColor((HDC)wp, Theme::Surface0);
-        return (INT_PTR)g_br_surface0;
-
-    case WM_CTLCOLORBTN:
-        SetTextColor((HDC)wp, Theme::Text);
-        SetBkColor((HDC)wp, Theme::Surface0);
-        return (INT_PTR)g_br_surface0;
+        return 0;
     }
-    return FALSE;
+    case WM_MOUSELEAVE:
+        RemoveProp(hwnd, L"vb_hover");
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    case WM_SETTEXT:
+    case WM_ENABLE:
+        DefSubclassProc(hwnd, msg, wp, lp);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    case WM_LBUTTONDOWN:
+        SetFocus(hwnd);
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    case WM_LBUTTONUP:
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_NCDESTROY:
+        RemoveProp(hwnd, L"vb_hover");
+        RemoveWindowSubclass(hwnd, pg_btn_subclass, subId);
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-// Create the dialog template in memory (no .rc file needed)
+static HWND pg_create_button(HWND parent, const wchar_t* text, int id, int x, int y, int w, int h,
+                              bool accent = false) {
+    HWND hw = CreateWindowExW(0, L"BUTTON", text,
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP,
+        x, y, w, h, parent, (HMENU)(INT_PTR)id, GetModuleHandleW(nullptr), nullptr);
+    SendMessage(hw, WM_SETFONT, (WPARAM)g_font, TRUE);
+    SetWindowSubclass(hw, pg_btn_subclass, (UINT_PTR)hw, accent ? 1 : 0);
+    return hw;
+}
+
 inline void show_passgen_dialog(HWND parent, std::string* target = nullptr) {
     s_target = target;
 
-    // Build dialog template in memory
-    // We'll create a simpler modeless approach using CreateWindowEx
-
-    const int DLG_W = 380, DLG_H = 340;
+    const int DLG_W = 400, DLG_H = 360;
     RECT parentRect;
     GetWindowRect(parent, &parentRect);
     int x = parentRect.left + (parentRect.right - parentRect.left - DLG_W) / 2;
     int y = parentRect.top + (parentRect.bottom - parentRect.top - DLG_H) / 2;
 
-    // Register a class for the dialog
     static bool registered = false;
     if (!registered) {
         WNDCLASSEXW wc = {};
@@ -197,7 +169,12 @@ inline void show_passgen_dialog(HWND parent, std::string* target = nullptr) {
     BOOL dark = TRUE;
     DwmSetWindowAttribute(dlg, 20, &dark, sizeof(dark));
 
-    int cy = 10;
+    // Accent stripe
+    HWND hAccent = CreateWindowExW(0, L"STATIC", L"",
+        WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
+        0, 0, DLG_W, 3, dlg, (HMENU)9999, GetModuleHandleW(nullptr), nullptr);
+
+    int cy = 16;
     auto mkLabel = [&](const wchar_t* text, int cx, int w, int h) {
         HWND hw = CreateWindowExW(0, L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_LEFT,
             cx, cy, w, h, dlg, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -211,64 +188,59 @@ inline void show_passgen_dialog(HWND parent, std::string* target = nullptr) {
         if (checked) SendMessage(hw, BM_SETCHECK, BST_CHECKED, 0);
         return hw;
     };
-    auto mkButton = [&](const wchar_t* text, int id, int cx, int w, int h) {
-        HWND hw = CreateWindowExW(0, L"BUTTON", text, WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            cx, cy, w, h, dlg, (HMENU)(INT_PTR)id, GetModuleHandleW(nullptr), nullptr);
-        SendMessage(hw, WM_SETFONT, (WPARAM)g_font, TRUE);
-        return hw;
-    };
 
-    // Preview
-    mkLabel(L"Generated Password:", 15, 340, 18);
-    cy += 22;
+    // Section header
+    mkLabel(L"Generated Password", 20, 200, 18);
+    cy += 24;
+
+    // Preview field (monospace, larger)
     HWND hPreview = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
         WS_CHILD | WS_VISIBLE | ES_READONLY | ES_AUTOHSCROLL,
-        15, cy, 250, 26, dlg, (HMENU)(INT_PTR)IDC_PG_PREVIEW, GetModuleHandleW(nullptr), nullptr);
+        20, cy, 240, 28, dlg, (HMENU)(INT_PTR)IDC_PG_PREVIEW, GetModuleHandleW(nullptr), nullptr);
     SendMessage(hPreview, WM_SETFONT, (WPARAM)g_font_mono, TRUE);
 
-    mkButton(L"Copy", IDC_PG_COPY, 270, 50, 26);
-    mkButton(L"New", IDC_PG_GENERATE, 325, 35, 26);
-    cy += 38;
+    pg_create_button(dlg, L"Copy", IDC_PG_COPY, 268, cy, 52, 28, true);
+    pg_create_button(dlg, L"New", IDC_PG_GENERATE, 326, cy, 48, 28);
+    cy += 42;
 
-    // Length slider
+    // Length section
     HWND hLenLabel = CreateWindowExW(0, L"STATIC", L"Length: 20", WS_CHILD | WS_VISIBLE | SS_LEFT,
-        15, cy, 120, 18, dlg, (HMENU)(INT_PTR)IDC_PG_LENGTH_LABEL, GetModuleHandleW(nullptr), nullptr);
-    SendMessage(hLenLabel, WM_SETFONT, (WPARAM)g_font, TRUE);
-    cy += 22;
+        20, cy, 140, 18, dlg, (HMENU)(INT_PTR)IDC_PG_LENGTH_LABEL, GetModuleHandleW(nullptr), nullptr);
+    SendMessage(hLenLabel, WM_SETFONT, (WPARAM)g_font_bold, TRUE);
+    cy += 24;
 
-    HWND hSlider = CreateWindowExW(0, TRACKBAR_CLASSW, L"",
+    HWND hSlider = CreateWindowExW(0, TRACKBAR_CLASS, L"",
         WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS | TBS_TOOLTIPS,
-        15, cy, 340, 30, dlg, (HMENU)(INT_PTR)IDC_PG_LENGTH_SLIDER, GetModuleHandleW(nullptr), nullptr);
+        20, cy, 350, 30, dlg, (HMENU)(INT_PTR)IDC_PG_LENGTH_SLIDER, GetModuleHandleW(nullptr), nullptr);
     SendMessage(hSlider, TBM_SETRANGE, TRUE, MAKELPARAM(4, 128));
     SendMessage(hSlider, TBM_SETPOS, TRUE, s_opts.length);
     SendMessage(hSlider, TBM_SETTICFREQ, 8, 0);
+    cy += 42;
+
+    // Character options (grid layout)
+    mkLabel(L"Character Sets", 20, 200, 18);
+    cy += 24;
+    mkCheck(L"Uppercase (A-Z)", IDC_PG_UPPER, 20, 170, s_opts.upper);
+    mkCheck(L"Lowercase (a-z)", IDC_PG_LOWER, 200, 170, s_opts.lower);
+    cy += 28;
+    mkCheck(L"Digits (0-9)", IDC_PG_DIGITS, 20, 170, s_opts.digits);
+    mkCheck(L"Symbols (!@#$...)", IDC_PG_SYMBOLS, 200, 170, s_opts.symbols);
+    cy += 28;
+    mkCheck(L"Include ambiguous (0OIl1|)", IDC_PG_AMBIGUOUS, 20, 260, s_opts.ambiguous);
     cy += 40;
 
-    // Checkboxes
-    mkCheck(L"Uppercase (A-Z)", IDC_PG_UPPER, 15, 160, s_opts.upper);
-    mkCheck(L"Lowercase (a-z)", IDC_PG_LOWER, 190, 160, s_opts.lower);
-    cy += 26;
-    mkCheck(L"Digits (0-9)", IDC_PG_DIGITS, 15, 160, s_opts.digits);
-    mkCheck(L"Symbols (!@#$...)", IDC_PG_SYMBOLS, 190, 160, s_opts.symbols);
-    cy += 26;
-    mkCheck(L"Include ambiguous (0OIl1|)", IDC_PG_AMBIGUOUS, 15, 250, s_opts.ambiguous);
-    cy += 36;
-
-    // Buttons
+    // Bottom buttons
     if (s_target) {
-        mkButton(L"Use Password", IDC_PG_USE, 15, 110, 30);
-        mkButton(L"Close", IDC_PG_OK, 290, 70, 30);
-    } else {
-        mkButton(L"Close", IDC_PG_OK, 290, 70, 30);
+        pg_create_button(dlg, L"Use Password", IDC_PG_USE, 20, cy, 120, 32, true);
     }
+    pg_create_button(dlg, L"Close", IDC_PG_OK, 300, cy, 74, 32);
 
     // Generate initial preview
     s_preview = generate_password(s_opts);
     SetWindowTextW(hPreview, to_wstr(s_preview).c_str());
 
-    // Custom wndproc for dark theme and message handling
-    SetWindowLongPtrW(dlg, GWLP_USERDATA, (LONG_PTR)dlg);
-    auto oldProc = (WNDPROC)SetWindowLongPtrW(dlg, GWLP_WNDPROC, (LONG_PTR)+[](HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) -> LRESULT {
+    // Custom wndproc for message handling + dark theme
+    SetWindowLongPtrW(dlg, GWLP_WNDPROC, (LONG_PTR)+[](HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) -> LRESULT {
         switch (msg) {
         case WM_HSCROLL: {
             int pos = (int)SendDlgItemMessageW(hwnd, IDC_PG_LENGTH_SLIDER, TBM_GETPOS, 0, 0);
@@ -279,6 +251,16 @@ inline void show_passgen_dialog(HWND parent, std::string* target = nullptr) {
             swprintf_s(buf, L"Length: %d", pos);
             SetWindowTextW(GetDlgItem(hwnd, IDC_PG_LENGTH_LABEL), buf);
             return 0;
+        }
+        case WM_DRAWITEM: {
+            DRAWITEMSTRUCT* dis = (DRAWITEMSTRUCT*)lp;
+            if (dis->CtlID == 9999) {
+                HBRUSH accent = CreateSolidBrush(Theme::Blue);
+                FillRect(dis->hDC, &dis->rcItem, accent);
+                DeleteObject(accent);
+                return TRUE;
+            }
+            break;
         }
         case WM_COMMAND:
             switch (LOWORD(wp)) {
@@ -299,9 +281,10 @@ inline void show_passgen_dialog(HWND parent, std::string* target = nullptr) {
             case IDC_PG_COPY:
                 if (OpenClipboard(hwnd)) {
                     EmptyClipboard();
-                    size_t sz = s_preview.size() + 1;
+                    std::wstring w = to_wstr(s_preview);
+                    size_t sz = (w.size() + 1) * sizeof(wchar_t);
                     HGLOBAL hg = GlobalAlloc(GMEM_MOVEABLE, sz);
-                    if (hg) { memcpy(GlobalLock(hg), s_preview.c_str(), sz); GlobalUnlock(hg); SetClipboardData(CF_TEXT, hg); }
+                    if (hg) { memcpy(GlobalLock(hg), w.c_str(), sz); GlobalUnlock(hg); SetClipboardData(CF_UNICODETEXT, hg); }
                     CloseClipboard();
                     SetTimer(hwnd, 9999, 30000, [](HWND h, UINT, UINT_PTR id, DWORD) {
                         if (OpenClipboard(h)) { EmptyClipboard(); CloseClipboard(); }
@@ -311,39 +294,40 @@ inline void show_passgen_dialog(HWND parent, std::string* target = nullptr) {
                 return 0;
             case IDC_PG_USE:
                 if (s_target) *s_target = s_preview;
+                EnableWindow(GetParent(hwnd), TRUE);
+                SetForegroundWindow(GetParent(hwnd));
                 DestroyWindow(hwnd);
                 return 0;
             case IDC_PG_OK: case IDCANCEL:
+                EnableWindow(GetParent(hwnd), TRUE);
+                SetForegroundWindow(GetParent(hwnd));
                 DestroyWindow(hwnd);
                 return 0;
             }
             break;
         case WM_CTLCOLORDLG:
-        case WM_CTLCOLORSTATIC:
-            SetTextColor((HDC)wp, Theme::Text);
-            SetBkColor((HDC)wp, Theme::Base);
             return (LRESULT)g_br_base;
+        case WM_CTLCOLORSTATIC: {
+            HDC hdc = (HDC)wp;
+            SetTextColor(hdc, Theme::Text);
+            SetBkColor(hdc, Theme::Base);
+            return (LRESULT)g_br_base;
+        }
         case WM_CTLCOLOREDIT:
             SetTextColor((HDC)wp, Theme::Text);
             SetBkColor((HDC)wp, Theme::Surface0);
             return (LRESULT)g_br_surface0;
         case WM_CTLCOLORBTN:
-            SetTextColor((HDC)wp, Theme::Text);
-            SetBkColor((HDC)wp, Theme::Surface0);
-            return (LRESULT)g_br_surface0;
+            return (LRESULT)g_br_base;
         case WM_CLOSE:
-            DestroyWindow(hwnd);
-            return 0;
-        case WM_DESTROY:
-            // Re-enable parent
             EnableWindow(GetParent(hwnd), TRUE);
             SetForegroundWindow(GetParent(hwnd));
+            DestroyWindow(hwnd);
             return 0;
         }
         return DefWindowProcW(hwnd, msg, wp, lp);
     });
 
-    // Make modal-like
     EnableWindow(parent, FALSE);
     SetForegroundWindow(dlg);
 }
