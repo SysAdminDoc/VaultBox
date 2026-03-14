@@ -25,7 +25,7 @@ inline void create_tray_icon(HWND hwnd) {
     g_nid.uID = 1;
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     g_nid.uCallbackMessage = WM_TRAYICON;
-    g_nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    g_nid.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_VAULTBOX));
     wcscpy_s(g_nid.szTip, L"VaultBox Desktop");
     Shell_NotifyIconW(NIM_ADD, &g_nid);
 }
@@ -146,9 +146,9 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
         std::string cmd = j.value("command", "");
 
         if (cmd == "minimize") {
-            ShowWindow(hwnd, SW_MINIMIZE);
+            ShowWindow(hwnd, SW_HIDE);
         } else if (cmd == "quit") {
-            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            PostMessage(hwnd, WM_VAULTBOX_QUIT, 0, 0);
         } else if (cmd == "opendata") {
             std::wstring wpath = to_wstr(g_data_dir.string());
             ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -159,9 +159,9 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
         }
     } catch (...) {
         if (msg == "minimize") {
-            ShowWindow(hwnd, SW_MINIMIZE);
+            ShowWindow(hwnd, SW_HIDE);
         } else if (msg == "quit") {
-            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            PostMessage(hwnd, WM_VAULTBOX_QUIT, 0, 0);
         } else if (msg == "opendata") {
             std::wstring wpath = to_wstr(g_data_dir.string());
             ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
@@ -209,12 +209,19 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SetForegroundWindow(hwnd);
             return 0;
         case IDM_TRAY_QUIT:
-            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            PostMessage(hwnd, WM_VAULTBOX_QUIT, 0, 0);
             return 0;
         }
         break;
 
     case WM_CLOSE:
+        // Hide to system tray on close (X button)
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+
+    case WM_VAULTBOX_QUIT:
+    case WM_ENDSESSION:
+    case WM_QUERYENDSESSION:
         remove_tray_icon();
         g_shutdown = true;
         if (g_webviewController) {
@@ -223,7 +230,7 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         g_webview = nullptr;
         DestroyWindow(hwnd);
-        return 0;
+        return (msg == WM_QUERYENDSESSION) ? TRUE : 0;
 
     case WM_DESTROY:
         PostQuitMessage(0);
@@ -243,8 +250,8 @@ inline HWND create_main_window(HINSTANCE hInst) {
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = CreateSolidBrush(RGB(26, 26, 46));
     wc.lpszClassName = L"VaultBoxDesktop";
-    wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
-    wc.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon = LoadIconW(hInst, MAKEINTRESOURCEW(IDI_VAULTBOX));
+    wc.hIconSm = LoadIconW(hInst, MAKEINTRESOURCEW(IDI_VAULTBOX));
     RegisterClassExW(&wc);
 
     BOOL dark = TRUE;

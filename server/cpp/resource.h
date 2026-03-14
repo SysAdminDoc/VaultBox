@@ -1,10 +1,14 @@
 // VaultBox Desktop - Resource IDs
 #pragma once
 
+// Icon
+#define IDI_VAULTBOX          101
+
 // Tray
 #define WM_TRAYICON          (WM_USER + 1)
-#define WM_VAULTBOX_LOG      (WM_USER + 2)
-#define WM_VAULTBOX_REFRESH  (WM_USER + 3)
+#define WM_VAULTBOX_QUIT     (WM_USER + 2)
+#define WM_VAULTBOX_LOG      (WM_USER + 3)
+#define WM_VAULTBOX_REFRESH  (WM_USER + 4)
 
 // Menu IDs
 #define IDM_FILE_IMPORT_BW_JSON   2001
