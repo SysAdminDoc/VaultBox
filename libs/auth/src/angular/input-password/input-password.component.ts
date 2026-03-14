@@ -249,7 +249,7 @@ export class InputPasswordComponent implements OnInit {
         ),
       ]);
 
-      this.formGroup.addControl("checkForBreaches", this.formBuilder.nonNullable.control(true));
+      this.formGroup.addControl("checkForBreaches", this.formBuilder.nonNullable.control(false));
     }
 
     if (

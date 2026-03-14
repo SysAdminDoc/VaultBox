@@ -1639,7 +1639,8 @@ export default class MainBackground {
     return new Promise<void>((resolve) => {
       setTimeout(async () => {
         await this.fullSync(false);
-        this.backgroundSyncService.init();
+        // VaultBox Offline: Disable periodic background sync (no cloud server)
+        // this.backgroundSyncService.init();
         this.serverNotificationsService.startListening();
 
         this.taskService.listenForTaskNotifications();

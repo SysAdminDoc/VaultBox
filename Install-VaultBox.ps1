@@ -51,10 +51,6 @@ function Get-BrowserExe([string]$key) {
             "${env:ProgramFiles(x86)}\Chromium\Application\chrome.exe"
             "$env:LOCALAPPDATA\ungoogled-chromium\chrome.exe"
         )
-        Firefox = @(
-            "${env:ProgramFiles}\Mozilla Firefox\firefox.exe"
-            "${env:ProgramFiles(x86)}\Mozilla Firefox\firefox.exe"
-        )
     }
     foreach ($p in $searchPaths[$key]) {
         if (Test-Path $p) { return $p }
@@ -69,11 +65,10 @@ function Get-BrowserExe([string]$key) {
 }
 
 $script:BrowserDefs = @(
-    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-Extension.zip";  IsFirefox=$false; Exe=$null; Detected=$false }
-    @{ Key="Firefox";  Name="Firefox";             Zip="VaultBox-Extension.zip"; IsFirefox=$true;  Exe=$null; Detected=$false }
+    @{ Key="Chrome";   Name="Google Chrome";       Zip="VaultBox-Extension.zip";  Exe=$null; Detected=$false }
+    @{ Key="Edge";     Name="Microsoft Edge";      Zip="VaultBox-Extension.zip";  Exe=$null; Detected=$false }
+    @{ Key="Brave";    Name="Brave";               Zip="VaultBox-Extension.zip";  Exe=$null; Detected=$false }
+    @{ Key="Chromium"; Name="Ungoogled Chromium";   Zip="VaultBox-Extension.zip";  Exe=$null; Detected=$false }
 )
 
 foreach ($b in $script:BrowserDefs) {
@@ -406,8 +401,7 @@ function Start-InstallWorker {
 
         # Get extension files
         $buildDir = Join-Path $scriptDir "apps\browser\build"
-        $firefoxDef = $defs | Where-Object { $_.IsFirefox } | Select-Object -First 1
-        $chromiumBrowsers = @($defs | Where-Object { -not $_.IsFirefox })
+        $chromiumBrowsers = @($defs)
 
         if ($chromiumBrowsers.Count -gt 0) {
             $zipName = $chromiumBrowsers[0].Zip
@@ -499,7 +493,7 @@ function Start-InstallWorker {
                         }
 
                         if ($extId) {
-                            $crxFileUri = "file:///" + ($crxFile -replace '\\', '/')
+                            $crxFileUri = "file:///" + (($crxFile -replace '\\', '/') -replace ' ', '%20')
                             $updateXml = Join-Path $crxDir "updates.xml"
                             $xmlContent = @"
 <?xml version='1.0' encoding='UTF-8'?>
@@ -510,7 +504,7 @@ function Start-InstallWorker {
 </gupdate>
 "@
                             Set-Content $updateXml $xmlContent -Encoding UTF8
-                            $updateUri = "file:///" + ($updateXml -replace '\\', '/')
+                            $updateUri = "file:///" + (($updateXml -replace '\\', '/') -replace ' ', '%20')
 
                             $policyPaths = @{
                                 Chrome   = "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
@@ -572,10 +566,6 @@ function Start-InstallWorker {
             }
         }
 
-        if ($firefoxDef) {
-            QLog "  Firefox detected -- requires manual add-on loading." "Yellow"
-            QLog "  Open about:debugging -> Load Temporary Add-on -> select manifest.json" ""
-        }
 
         QLog "" ""
 
@@ -587,7 +577,7 @@ function Start-InstallWorker {
         QLog "How to get started:" "Green"
         QLog "  1. Open your browser (or use the VaultBox desktop shortcut)" ""
         QLog "  2. Click the VaultBox icon in your browser toolbar" ""
-        QLog "  3. Click 'Create account' and set your master password" ""
+        QLog "  3. Click 'Create vault' and set your master password" ""
         QLog "  4. Start adding passwords!" ""
         QLog "" ""
         QLog "Your encrypted vault: $env:LOCALAPPDATA\VaultBox\vault.db" ""
@@ -633,11 +623,6 @@ function Start-UninstallWorker {
         # Stop server
         try {
             $serverProcs = Get-Process -Name "VaultBox-Server" -ErrorAction SilentlyContinue
-            if (-not $serverProcs) {
-                $serverProcs = Get-Process -Name "python*" -ErrorAction SilentlyContinue | Where-Object {
-                    try { $_.CommandLine -like "*vaultbox_server*" } catch { $false }
-                }
-            }
             if ($serverProcs) {
                 $serverProcs | Stop-Process -Force
                 QLog "Stopped VaultBox Server." "Green"

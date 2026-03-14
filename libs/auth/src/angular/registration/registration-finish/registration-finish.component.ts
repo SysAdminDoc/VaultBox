@@ -203,7 +203,11 @@ export class RegistrationFinishComponent implements OnInit, OnDestroy {
 
       const authenticationResult = await this.loginStrategyService.logIn(credentials);
 
-      if (authenticationResult?.requiresTwoFactor) {
+      if (!authenticationResult) {
+        throw new Error("Login returned no result");
+      }
+
+      if (authenticationResult.requiresTwoFactor) {
         await this.router.navigate(["/2fa"]);
         return;
       }

@@ -230,6 +230,17 @@ json parse_body(const httplib::Request& req) {
     try { return json::parse(req.body); } catch (...) { return json::object(); }
 }
 
+// Safe conversion of a JSON value (possibly string from SQLite) to integer
+int to_int(const json& v, int fallback = 0) {
+    if (v.is_number()) return v.get<int>();
+    if (v.is_string()) {
+        auto s = v.get<std::string>();
+        if (s.empty()) return fallback;
+        try { return std::stoi(s); } catch (...) { return fallback; }
+    }
+    return fallback;
+}
+
 void send_json(httplib::Response& res, const json& j, int status = 200) {
     res.status = status;
     res.set_content(j.dump(), "application/json");
@@ -237,7 +248,7 @@ void send_json(httplib::Response& res, const json& j, int status = 200) {
 
 void send_error(httplib::Response& res, int status, const std::string& msg) {
     res.status = status;
-    res.set_content(json({{"detail", msg}}).dump(), "application/json");
+    res.set_content(json({{"message", msg}, {"Message", msg}}).dump(), "application/json");
 }
 
 // ============================================================================
@@ -406,6 +417,24 @@ void init_db() {
 // ============================================================================
 // JSON Builders
 // ============================================================================
+json build_account_keys(const json& u) {
+    auto safe_str = [&](const char* key) -> std::string {
+        if (!u.contains(key) || u[key].is_null()) return "";
+        return u[key].is_string() ? u[key].get<std::string>() : "";
+    };
+    std::string pub = safe_str("public_key");
+    std::string priv = safe_str("encrypted_private_key");
+    if (!pub.empty() && !priv.empty()) {
+        return {
+            {"publicKeyEncryptionKeyPair", {
+                {"publicKey", pub},
+                {"wrappedPrivateKey", priv},
+            }},
+        };
+    }
+    return nullptr;
+}
+
 json build_profile(const json& u) {
     std::string name = u.contains("name") && u["name"].is_string() ? u["name"].get<std::string>() : "";
     std::string email = u["email"].get<std::string>();
@@ -423,6 +452,7 @@ json build_profile(const json& u) {
         {"culture", safe_str("culture")},
         {"twoFactorEnabled", false}, {"key", safe_str("key")},
         {"privateKey", safe_str("encrypted_private_key")},
+        {"AccountKeys", build_account_keys(u)},
         {"securityStamp", safe_str("security_stamp")},
         {"forcePasswordReset", false}, {"usesKeyConnector", false}, {"avatarColor", nullptr},
         {"organizations", json::array()}, {"providers", json::array()},
@@ -452,13 +482,13 @@ json build_cipher(const json& r) {
         {"object", "cipher"}, {"id", r["id"]},
         {"organizationId", r.contains("organization_id") ? r["organization_id"] : json(nullptr)},
         {"folderId", r.contains("folder_id") ? r["folder_id"] : json(nullptr)},
-        {"type", r.value("type", (int64_t)1)},
+        {"type", r.contains("type") ? to_int(r["type"], 1) : 1},
         {"name", dv("name")}, {"notes", dv("notes")}, {"login", dv("login")},
         {"card", dv("card")}, {"identity", dv("identity")}, {"secureNote", dv("secureNote")},
         {"fields", dv("fields")}, {"passwordHistory", dv("passwordHistory")},
         {"attachments", dv("attachments")}, {"key", dv("key")},
-        {"favorite", r.value("favorite", (int64_t)0) != 0},
-        {"reprompt", r.value("reprompt", (int64_t)0)},
+        {"favorite", r.contains("favorite") ? to_int(r["favorite"], 0) != 0 : false},
+        {"reprompt", r.contains("reprompt") ? to_int(r["reprompt"], 0) : 0},
         {"organizationUseTotp", false},
         {"revisionDate", r.value("updated_at", std::string(""))},
         {"creationDate", r.value("created_at", std::string(""))},
@@ -538,8 +568,16 @@ std::string create_refresh_token(const std::string& uid) {
 void setup_routes(httplib::Server& svr) {
 
     // --- CORS ---
-    svr.set_post_routing_handler([](const httplib::Request&, httplib::Response& res) {
-        res.set_header("Access-Control-Allow-Origin", "*");
+    svr.set_post_routing_handler([](const httplib::Request& req, httplib::Response& res) {
+        auto origin = req.get_header_value("Origin");
+        // Only allow chrome-extension:// origins and localhost
+        bool allowed = origin.empty()
+            || origin.rfind("chrome-extension://", 0) == 0
+            || origin.rfind("moz-extension://", 0) == 0
+            || origin == "http://127.0.0.1:8787"
+            || origin == "http://localhost:8787";
+        std::string cors_origin = allowed && !origin.empty() ? origin : "http://127.0.0.1:8787";
+        res.set_header("Access-Control-Allow-Origin", cors_origin);
         res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
         res.set_header("Access-Control-Allow-Headers", "*");
         res.set_header("Access-Control-Allow-Credentials", "true");
@@ -565,12 +603,16 @@ void setup_routes(httplib::Server& svr) {
         DB db;
         auto rows = db.query("SELECT kdf, kdf_iterations, kdf_memory, kdf_parallelism FROM accounts WHERE email=?", {email});
         if (!rows.empty()) {
-            send_json(res, {
-                {"kdf", rows[0]["kdf"]}, {"kdfIterations", rows[0]["kdf_iterations"]},
-                {"kdfMemory", rows[0]["kdf_memory"]}, {"kdfParallelism", rows[0]["kdf_parallelism"]},
-            });
+            json resp = {{"kdf", to_int(rows[0]["kdf"], 0)}, {"kdfIterations", to_int(rows[0]["kdf_iterations"], 600000)}};
+            if (!rows[0]["kdf_memory"].is_null() && !(rows[0]["kdf_memory"].is_string() && rows[0]["kdf_memory"].get<std::string>().empty())) {
+                resp["kdfMemory"] = to_int(rows[0]["kdf_memory"], 64);
+            }
+            if (!rows[0]["kdf_parallelism"].is_null() && !(rows[0]["kdf_parallelism"].is_string() && rows[0]["kdf_parallelism"].get<std::string>().empty())) {
+                resp["kdfParallelism"] = to_int(rows[0]["kdf_parallelism"], 4);
+            }
+            send_json(res, resp);
         } else {
-            send_json(res, {{"kdf",1}, {"kdfIterations",3}, {"kdfMemory",64}, {"kdfParallelism",4}});
+            send_json(res, {{"kdf",0}, {"kdfIterations",600000}});
         }
     });
 
@@ -593,7 +635,7 @@ void setup_routes(httplib::Server& svr) {
 
         DB db;
         if (!db.query("SELECT id FROM accounts WHERE email=?", {email}).empty()) {
-            send_error(res, 400, "Email already registered"); return;
+            send_error(res, 400, "A vault already exists. Log in with your master password, or delete vault.db to start fresh."); return;
         }
         db.run(R"(INSERT INTO accounts (id, email, master_password_hash, master_password_hint,
             security_stamp, key, public_key, encrypted_private_key,
@@ -602,11 +644,11 @@ void setup_routes(httplib::Server& svr) {
             {uid, email, hash, body.value("masterPasswordHint", ""),
              stamp, body.value("userSymmetricKey", ""),
              keys.value("publicKey", ""), keys.value("encryptedPrivateKey", ""),
-             std::to_string(body.value("kdf", 1)), std::to_string(body.value("kdfIterations", 600000)),
+             std::to_string(body.value("kdf", 0)), std::to_string(body.value("kdfIterations", 600000)),
              body.contains("kdfMemory") && !body["kdfMemory"].is_null() ? std::to_string(body["kdfMemory"].get<int>()) : "",
              body.contains("kdfParallelism") && !body["kdfParallelism"].is_null() ? std::to_string(body["kdfParallelism"].get<int>()) : "",
              now, now});
-        res.status = 200;
+        send_json(res, json::object());
     });
 
     // Legacy registration
@@ -621,7 +663,7 @@ void setup_routes(httplib::Server& svr) {
 
         DB db;
         if (!db.query("SELECT id FROM accounts WHERE email=?", {email}).empty()) {
-            send_error(res, 400, "Email already registered"); return;
+            send_error(res, 400, "A vault already exists. Log in with your master password, or delete vault.db to start fresh."); return;
         }
         db.run(R"(INSERT INTO accounts (id, email, master_password_hash, master_password_hint,
             security_stamp, key, public_key, encrypted_private_key,
@@ -630,11 +672,11 @@ void setup_routes(httplib::Server& svr) {
             {uid, email, hash, body.value("masterPasswordHint", ""),
              stamp, body.value("key", ""),
              keys.value("publicKey", ""), keys.value("encryptedPrivateKey", ""),
-             std::to_string(body.value("kdf", 1)), std::to_string(body.value("kdfIterations", 600000)),
+             std::to_string(body.value("kdf", 0)), std::to_string(body.value("kdfIterations", 600000)),
              body.contains("kdfMemory") && !body["kdfMemory"].is_null() ? std::to_string(body["kdfMemory"].get<int>()) : "",
              body.contains("kdfParallelism") && !body["kdfParallelism"].is_null() ? std::to_string(body["kdfParallelism"].get<int>()) : "",
              now, now});
-        res.status = 200;
+        send_json(res, json::object());
     });
 
     // --- Login (Token) ---
@@ -676,6 +718,11 @@ void setup_routes(httplib::Server& svr) {
         auto safe = [&](const char* k) -> json {
             return (user.contains(k) && !user[k].is_null()) ? user[k] : json(nullptr);
         };
+        auto safe_int = [&](const char* k, int fallback = 0) -> json {
+            if (!user.contains(k) || user[k].is_null()) return json(nullptr);
+            if (user[k].is_string() && user[k].get<std::string>().empty()) return json(nullptr);
+            return json(to_int(user[k], fallback));
+        };
 
         send_json(res, {
             {"access_token", create_access_token(user["id"].get<std::string>(), user["email"].get<std::string>())},
@@ -683,8 +730,9 @@ void setup_routes(httplib::Server& svr) {
             {"token_type", "Bearer"},
             {"refresh_token", create_refresh_token(user["id"].get<std::string>())},
             {"Key", safe("key")}, {"PrivateKey", safe("encrypted_private_key")},
-            {"Kdf", safe("kdf")}, {"KdfIterations", safe("kdf_iterations")},
-            {"KdfMemory", safe("kdf_memory")}, {"KdfParallelism", safe("kdf_parallelism")},
+            {"AccountKeys", build_account_keys(user)},
+            {"Kdf", safe_int("kdf")}, {"KdfIterations", safe_int("kdf_iterations")},
+            {"KdfMemory", safe_int("kdf_memory")}, {"KdfParallelism", safe_int("kdf_parallelism")},
             {"ResetMasterPassword", false}, {"ForcePasswordReset", false},
             {"MasterPasswordPolicy", nullptr},
             {"UserDecryptionOptions", {{"HasMasterPassword", true}}},
@@ -709,6 +757,7 @@ void setup_routes(httplib::Server& svr) {
         db.run("UPDATE accounts SET name=?, culture=?, updated_at=? WHERE id=?",
             {name, culture, utcnow(), user["id"].get<std::string>()});
         auto rows = db.query("SELECT * FROM accounts WHERE id=?", {user["id"].get<std::string>()});
+        if (rows.empty()) { send_error(res, 500, "Failed to update profile"); return; }
         send_json(res, build_profile(rows[0]));
     });
 
@@ -753,7 +802,7 @@ void setup_routes(httplib::Server& svr) {
         std::string uid = user["id"].get<std::string>();
         DB db;
         db.run("UPDATE accounts SET kdf=?, kdf_iterations=?, kdf_memory=NULLIF(?,''), kdf_parallelism=NULLIF(?,''), key=?, master_password_hash=?, updated_at=? WHERE id=?",
-            {std::to_string(body.value("kdf", (int)user.value("kdf",(int64_t)1))),
+            {std::to_string(body.value("kdf", (int)user.value("kdf",(int64_t)0))),
              std::to_string(body.value("kdfIterations", (int)user.value("kdf_iterations",(int64_t)600000))),
              body.contains("kdfMemory") && !body["kdfMemory"].is_null() ? std::to_string(body["kdfMemory"].get<int>()) : "",
              body.contains("kdfParallelism") && !body["kdfParallelism"].is_null() ? std::to_string(body["kdfParallelism"].get<int>()) : "",
@@ -978,6 +1027,7 @@ void setup_routes(httplib::Server& svr) {
         db.run("INSERT INTO folders (id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
             {fid, user["id"].get<std::string>(), body.value("name",""), now, now});
         auto rows = db.query("SELECT * FROM folders WHERE id=?", {fid});
+        if (rows.empty()) { send_error(res, 500, "Failed to create folder"); return; }
         send_json(res, build_folder(rows[0]));
     });
 
@@ -1088,6 +1138,8 @@ void setup_routes(httplib::Server& svr) {
             res.status = 200;
             if (req.method == "GET") {
                 res.set_content(R"({"object":"list","data":[],"continuationToken":null})", "application/json");
+            } else {
+                res.set_content("{}", "application/json");
             }
         }
     });
