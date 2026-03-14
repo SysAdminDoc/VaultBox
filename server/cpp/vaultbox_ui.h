@@ -23,7 +23,8 @@ R"VBHTML(<!DOCTYPE html>
   --shadow:0 4px 24px rgba(0,0,0,.35);
   --transition:150ms ease;
 }
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+html,body{height:100%;background:var(--bg);color:var(--text);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+body{overflow:hidden}
 ::selection{background:var(--primary);color:#fff}
 ::-webkit-scrollbar{width:6px}
 ::-webkit-scrollbar-track{background:transparent}

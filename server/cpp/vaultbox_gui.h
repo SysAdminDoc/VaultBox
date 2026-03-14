@@ -54,7 +54,6 @@ inline void handle_app_command(HWND hwnd, const std::string& msg);
 // WebView2 Initialization
 // ============================================================================
 inline void init_webview(HWND hwnd) {
-    // Use user data directory for WebView2 cache
     std::wstring userDataFolder = to_wstr((g_data_dir / "WebView2Cache").string());
 
     CreateCoreWebView2EnvironmentWithOptions(nullptr, userDataFolder.c_str(), nullptr,
@@ -104,6 +103,7 @@ inline void init_webview(HWND hwnd) {
                             RECT bounds;
                             GetClientRect(hwnd, &bounds);
                             g_webviewController->put_Bounds(bounds);
+                            g_webviewController->put_IsVisible(TRUE);
 
                             // Handle postMessage from JavaScript
                             g_webview->add_WebMessageReceived(
@@ -141,7 +141,6 @@ inline void init_webview(HWND hwnd) {
 // Handle app commands from JavaScript via postMessage
 // ============================================================================
 inline void handle_app_command(HWND hwnd, const std::string& msg) {
-    // Parse JSON message: {"command":"..."}
     try {
         auto j = json::parse(msg);
         std::string cmd = j.value("command", "");
@@ -156,7 +155,6 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
             ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         }
     } catch (...) {
-        // Try as plain string command
         if (msg == "minimize") {
             ShowWindow(hwnd, SW_HIDE);
         } else if (msg == "quit") {
@@ -232,22 +230,19 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 // Create Main Window
 // ============================================================================
 inline HWND create_main_window(HINSTANCE hInst) {
-    // Register window class
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(wc);
     wc.lpfnWndProc = wndproc;
     wc.hInstance = hInst;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = CreateSolidBrush(RGB(26, 26, 46)); // Match --bg
+    wc.hbrBackground = CreateSolidBrush(RGB(26, 26, 46));
     wc.lpszClassName = L"VaultBoxDesktop";
     wc.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
     wc.hIconSm = LoadIconW(nullptr, IDI_APPLICATION);
     RegisterClassExW(&wc);
 
-    // Enable dark title bar
     BOOL dark = TRUE;
 
-    // Calculate centered position
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
     int winW = 1100, winH = 700;
@@ -262,12 +257,9 @@ inline HWND create_main_window(HINSTANCE hInst) {
 
     if (!hwnd) return nullptr;
 
-    // Dark title bar
     DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
 
     g_main_hwnd = hwnd;
-
-    // Create tray icon
     create_tray_icon(hwnd);
 
     return hwnd;
