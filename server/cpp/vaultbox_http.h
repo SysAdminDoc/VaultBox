@@ -1,7 +1,8 @@
-// VaultBox Desktop - HTTP Server (Bitwarden-compatible API)
+// VaultBox Desktop - HTTP Server (Bitwarden-compatible API + GUI API)
 #pragma once
 #include "vaultbox_server.h"
 #include "vaultbox_db.h"
+#include "vaultbox_ui.h"
 
 inline void setup_routes(httplib::Server& svr) {
 
@@ -24,11 +25,259 @@ inline void setup_routes(httplib::Server& svr) {
         res.status = 200;
     });
 
-    // --- Health / Info ---
+    // --- Serve SPA at root ---
     svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
-        send_json(res, {{"server","VaultBox"}, {"version",APP_VERSION}, {"status","running"}});
+        res.set_content(VAULTBOX_SPA_HTML, "text/html; charset=utf-8");
     });
     svr.Get("/alive", [](const httplib::Request&, httplib::Response& res) { res.status = 200; });
+    svr.Get("/api/alive", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, {{"server","VaultBox"}, {"version",APP_VERSION}, {"status","running"}});
+    });
+
+    // =================================================================
+    // VaultBox GUI API (used by the embedded SPA)
+    // =================================================================
+
+    // --- Status ---
+    svr.Get("/api/vaultbox/status", [](const httplib::Request&, httplib::Response& res) {
+        std::string email;
+        DB db;
+        auto rows = db.query("SELECT email FROM accounts LIMIT 1", {});
+        if (!rows.empty()) email = rows[0]["email"].get<std::string>();
+        send_json(res, {{"unlocked", g_vault.unlocked}, {"email", email}, {"version", APP_VERSION}});
+    });
+
+    // --- Unlock ---
+    svr.Post("/api/vaultbox/unlock", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        std::string email = body.value("email", "");
+        std::string password = body.value("password", "");
+        if (email.empty() || password.empty()) {
+            send_error(res, 400, "Email and password required"); return;
+        }
+        if (VBCrypto::unlock_vault(password, email)) {
+            send_json(res, {{"success", true}, {"entries", (int)g_vault.entries.size()}, {"folders", (int)g_vault.folders.size()}});
+        } else {
+            send_error(res, 401, "Invalid master password or account not found");
+        }
+    });
+
+    // --- Lock ---
+    svr.Post("/api/vaultbox/lock", [](const httplib::Request&, httplib::Response& res) {
+        g_vault.clear();
+        vb_log("Vault locked");
+        send_json(res, {{"success", true}});
+    });
+
+    // --- Get vault data (decrypted) ---
+    svr.Get("/api/vaultbox/vault", [](const httplib::Request&, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::lock_guard<std::mutex> lk(g_vault.mtx);
+        json entries = json::array();
+        for (auto& e : g_vault.entries) {
+            entries.push_back({
+                {"id", e.id}, {"name", e.name}, {"username", e.username},
+                {"password", e.password}, {"uri", e.uri}, {"notes", e.notes},
+                {"type", e.type}, {"favorite", e.favorite},
+                {"folderId", e.folderId}, {"folderName", e.folderName},
+                {"updatedAt", e.updatedAt}
+            });
+        }
+        json folders = json::array();
+        for (auto& f : g_vault.folders) {
+            folders.push_back({{"id", f.id}, {"name", f.name}});
+        }
+        send_json(res, {{"entries", entries}, {"folders", folders}});
+    });
+
+    // --- Create entry ---
+    svr.Post("/api/vaultbox/entry", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        auto body = parse_body(req);
+        DecryptedEntry de;
+        de.type = body.value("type", 1);
+        de.name = body.value("name", "");
+        de.username = body.value("username", "");
+        de.password = body.value("password", "");
+        de.uri = body.value("uri", "");
+        de.notes = body.value("notes", "");
+        de.folderId = body.value("folderId", "");
+        de.favorite = body.value("favorite", false);
+        if (VBCrypto::save_entry(de, true)) {
+            VBCrypto::refresh_vault();
+            send_json(res, {{"success", true}, {"id", de.id}});
+        } else {
+            send_error(res, 500, "Failed to save entry");
+        }
+    });
+
+    // --- Update entry ---
+    svr.Put(R"(/api/vaultbox/entry/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::string id = req.matches[1].str();
+        auto body = parse_body(req);
+        DecryptedEntry de;
+        de.id = id;
+        de.type = body.value("type", 1);
+        de.name = body.value("name", "");
+        de.username = body.value("username", "");
+        de.password = body.value("password", "");
+        de.uri = body.value("uri", "");
+        de.notes = body.value("notes", "");
+        de.folderId = body.value("folderId", "");
+        de.favorite = body.value("favorite", false);
+        if (VBCrypto::save_entry(de, false)) {
+            VBCrypto::refresh_vault();
+            send_json(res, {{"success", true}});
+        } else {
+            send_error(res, 500, "Failed to update entry");
+        }
+    });
+
+    // --- Delete entry ---
+    svr.Delete(R"(/api/vaultbox/entry/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::string id = req.matches[1].str();
+        if (VBCrypto::delete_entry(id)) {
+            VBCrypto::refresh_vault();
+            send_json(res, {{"success", true}});
+        } else {
+            send_error(res, 500, "Failed to delete entry");
+        }
+    });
+
+    // --- Create folder ---
+    svr.Post("/api/vaultbox/folder", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        auto body = parse_body(req);
+        std::string name = body.value("name", "");
+        if (name.empty()) { send_error(res, 400, "Folder name required"); return; }
+        std::string fid = VBCrypto::save_folder(name, "");
+        if (!fid.empty()) {
+            VBCrypto::refresh_vault();
+            send_json(res, {{"success", true}, {"id", fid}});
+        } else {
+            send_error(res, 500, "Failed to create folder");
+        }
+    });
+
+    // --- Rename folder ---
+    svr.Put(R"(/api/vaultbox/folder/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::string id = req.matches[1].str();
+        auto body = parse_body(req);
+        std::string name = body.value("name", "");
+        if (name.empty()) { send_error(res, 400, "Folder name required"); return; }
+        VBCrypto::save_folder(name, id);
+        VBCrypto::refresh_vault();
+        send_json(res, {{"success", true}});
+    });
+
+    // --- Delete folder ---
+    svr.Delete(R"(/api/vaultbox/folder/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::string id = req.matches[1].str();
+        VBCrypto::delete_folder(id);
+        VBCrypto::refresh_vault();
+        send_json(res, {{"success", true}});
+    });
+
+    // --- Password generator ---
+    svr.Post("/api/vaultbox/generate", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        VBPassGen::PassGenOptions opts;
+        opts.length = body.value("length", 20);
+        opts.upper = body.value("upper", true);
+        opts.lower = body.value("lower", true);
+        opts.digits = body.value("digits", true);
+        opts.symbols = body.value("symbols", true);
+        opts.ambiguous = body.value("ambiguous", false);
+        std::string pw = VBPassGen::generate_password(opts);
+        send_json(res, {{"password", pw}});
+    });
+
+    // --- Import ---
+    svr.Post(R"(/api/vaultbox/import/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::string type = req.matches[1].str();
+
+        // Write request body to temp file
+        auto tempDir = g_data_dir / "temp";
+        fs::create_directories(tempDir);
+        std::string ext = ".json";
+        if (type.find("csv") != std::string::npos) ext = ".csv";
+        else if (type.find("xml") != std::string::npos) ext = ".xml";
+        auto tempFile = tempDir / ("import_" + generate_uuid() + ext);
+        {
+            std::ofstream out(tempFile, std::ios::binary);
+            out.write(req.body.data(), req.body.size());
+        }
+
+        int count = -1;
+        if (type == "bitwarden_json") count = VBImport::import_bitwarden_json(tempFile.string());
+        else if (type == "bitwarden_csv") count = VBImport::import_bitwarden_csv(tempFile.string());
+        else if (type == "chrome_csv") count = VBImport::import_chrome_csv(tempFile.string());
+        else if (type == "keepass_xml") count = VBImport::import_keepass_xml(tempFile.string());
+
+        fs::remove(tempFile);
+
+        if (count >= 0) {
+            send_json(res, {{"success", true}, {"count", count}});
+        } else {
+            send_error(res, 400, "Import failed or unsupported format");
+        }
+    });
+
+    // --- Export ---
+    svr.Get(R"(/api/vaultbox/export/([^/]+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
+        std::string type = req.matches[1].str();
+
+        auto tempDir = g_data_dir / "temp";
+        fs::create_directories(tempDir);
+        auto tempFile = tempDir / ("export_" + generate_uuid() + (type == "json" ? ".json" : ".csv"));
+
+        bool ok = false;
+        if (type == "json") ok = VBImport::export_bitwarden_json(tempFile.string());
+        else if (type == "csv") ok = VBImport::export_csv(tempFile.string());
+
+        if (ok) {
+            std::ifstream in(tempFile, std::ios::binary);
+            std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            in.close();
+            fs::remove(tempFile);
+
+            std::string ctype = type == "json" ? "application/json" : "text/csv";
+            std::string fname = type == "json" ? "vaultbox-export.json" : "vaultbox-export.csv";
+            res.set_header("Content-Disposition", "attachment; filename=\"" + fname + "\"");
+            res.set_content(content, ctype);
+        } else {
+            fs::remove(tempFile);
+            send_error(res, 500, "Export failed");
+        }
+    });
+
+    // --- Launch URI (fallback for non-WebView2 contexts) ---
+    svr.Post("/api/vaultbox/launch", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        std::string uri = body.value("uri", "");
+        if (!uri.empty()) {
+            std::wstring wuri = to_wstr(uri);
+            ShellExecuteW(nullptr, L"open", wuri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        send_json(res, {{"success", true}});
+    });
+
+    // --- Log stream ---
+    svr.Get("/api/vaultbox/logs", [](const httplib::Request&, httplib::Response& res) {
+        json logs = json::array();
+        std::lock_guard<std::mutex> lk(g_log_mtx);
+        while (!g_log_queue.empty()) {
+            logs.push_back(g_log_queue.front());
+            g_log_queue.pop();
+        }
+        send_json(res, {{"logs", logs}});
+    });
 
     // --- Prelogin ---
     svr.Post("/accounts/prelogin", [](const httplib::Request& req, httplib::Response& res) {

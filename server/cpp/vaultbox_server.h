@@ -1,4 +1,4 @@
-// VaultBox Desktop v0.4.0 - Shared Types & Utilities
+// VaultBox Desktop v0.5.0 - Shared Types & Utilities
 #pragma once
 
 #ifndef UNICODE
@@ -26,6 +26,7 @@
 #include <dwmapi.h>
 #include <windowsx.h>
 #include <commdlg.h>
+#include <objbase.h>
 
 #undef DELETE
 #undef min
@@ -41,6 +42,7 @@
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "uxtheme.lib")
+#pragma comment(lib, "ole32.lib")
 #pragma comment(linker, "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
 
 #include <string>
@@ -70,35 +72,10 @@ namespace fs = std::filesystem;
 // ============================================================================
 // Version & Config
 // ============================================================================
-static const char* APP_VERSION = "0.4.0";
+static const char* APP_VERSION = "0.5.0";
 static const char* HOST = "127.0.0.1";
 static const int PORT = 8787;
 static const int TOKEN_EXPIRY_HOURS = 24 * 30;
-
-// ============================================================================
-// Catppuccin Mocha Theme
-// ============================================================================
-namespace Theme {
-    constexpr COLORREF Base      = RGB(30, 30, 46);
-    constexpr COLORREF Mantle    = RGB(24, 24, 37);
-    constexpr COLORREF Crust     = RGB(17, 17, 27);
-    constexpr COLORREF Surface0  = RGB(49, 50, 68);
-    constexpr COLORREF Surface1  = RGB(69, 71, 90);
-    constexpr COLORREF Surface2  = RGB(88, 91, 112);
-    constexpr COLORREF Overlay0  = RGB(108, 112, 134);
-    constexpr COLORREF Overlay1  = RGB(127, 132, 156);
-    constexpr COLORREF Text      = RGB(205, 214, 244);
-    constexpr COLORREF Subtext0  = RGB(166, 173, 200);
-    constexpr COLORREF Subtext1  = RGB(186, 194, 222);
-    constexpr COLORREF Blue      = RGB(137, 180, 250);
-    constexpr COLORREF Green     = RGB(166, 227, 161);
-    constexpr COLORREF Red       = RGB(243, 139, 168);
-    constexpr COLORREF Yellow    = RGB(249, 226, 175);
-    constexpr COLORREF Peach     = RGB(250, 179, 135);
-    constexpr COLORREF Mauve     = RGB(203, 166, 247);
-    constexpr COLORREF Teal      = RGB(148, 226, 213);
-    constexpr COLORREF Lavender  = RGB(180, 190, 254);
-}
 
 // ============================================================================
 // Globals
@@ -109,22 +86,7 @@ inline std::string g_jwt_secret;
 inline std::atomic<bool> g_shutdown{false};
 inline httplib::Server* g_server = nullptr;
 inline HWND g_main_hwnd = nullptr;
-inline HWND g_tray_hwnd = nullptr;
 inline NOTIFYICONDATAW g_nid = {};
-inline HFONT g_font = nullptr;
-inline HFONT g_font_bold = nullptr;
-inline HFONT g_font_mono = nullptr;
-inline HFONT g_font_title = nullptr;    // Large title font for dialogs
-inline HFONT g_font_detail = nullptr;   // Slightly larger for detail panel values
-
-// Theme brushes
-inline HBRUSH g_br_base = nullptr;
-inline HBRUSH g_br_mantle = nullptr;
-inline HBRUSH g_br_surface0 = nullptr;
-inline HBRUSH g_br_surface1 = nullptr;
-inline HBRUSH g_br_crust = nullptr;
-inline HBRUSH g_br_blue = nullptr;
-inline HBRUSH g_br_surface2 = nullptr;
 
 // Decrypted vault state
 struct DecryptedEntry {
@@ -187,7 +149,6 @@ inline void vb_log(const std::string& msg) {
         std::lock_guard<std::mutex> lk(g_log_mtx);
         g_log_queue.push(std::string(buf) + msg);
     }
-    if (g_main_hwnd) PostMessage(g_main_hwnd, WM_VAULTBOX_LOG, 0, 0);
 }
 
 // ============================================================================
@@ -384,77 +345,3 @@ inline std::string from_wstr(const std::wstring& w) {
     return s;
 }
 
-// Get text from a Win32 control
-inline std::string get_ctrl_text(HWND hwnd) {
-    int len = GetWindowTextLengthW(hwnd);
-    if (len <= 0) return "";
-    std::wstring buf(len + 1, 0);
-    GetWindowTextW(hwnd, &buf[0], len + 1);
-    buf.resize(len);
-    return from_wstr(buf);
-}
-
-// Create themed fonts
-inline void init_fonts() {
-    NONCLIENTMETRICSW ncm = {};
-    ncm.cbSize = sizeof(ncm);
-    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
-
-    // Base UI font - Segoe UI 10pt
-    ncm.lfMessageFont.lfHeight = -15;
-    ncm.lfMessageFont.lfWeight = FW_NORMAL;
-    ncm.lfMessageFont.lfQuality = CLEARTYPE_QUALITY;
-    wcscpy_s(ncm.lfMessageFont.lfFaceName, L"Segoe UI");
-    g_font = CreateFontIndirectW(&ncm.lfMessageFont);
-
-    // Bold variant
-    ncm.lfMessageFont.lfWeight = FW_SEMIBOLD;
-    g_font_bold = CreateFontIndirectW(&ncm.lfMessageFont);
-
-    // Title font - large, for dialog headers
-    LOGFONTW title = ncm.lfMessageFont;
-    title.lfHeight = -28;
-    title.lfWeight = FW_BOLD;
-    title.lfQuality = CLEARTYPE_QUALITY;
-    wcscpy_s(title.lfFaceName, L"Segoe UI");
-    g_font_title = CreateFontIndirectW(&title);
-
-    // Detail value font - slightly larger for readability
-    LOGFONTW detail = ncm.lfMessageFont;
-    detail.lfHeight = -15;
-    detail.lfWeight = FW_NORMAL;
-    detail.lfQuality = CLEARTYPE_QUALITY;
-    wcscpy_s(detail.lfFaceName, L"Segoe UI");
-    g_font_detail = CreateFontIndirectW(&detail);
-
-    // Monospace font for passwords and log
-    LOGFONTW mono = {};
-    mono.lfHeight = -14;
-    mono.lfWeight = FW_NORMAL;
-    mono.lfQuality = CLEARTYPE_QUALITY;
-    wcscpy_s(mono.lfFaceName, L"Cascadia Mono");
-    g_font_mono = CreateFontIndirectW(&mono);
-    // Fallback to Consolas if Cascadia Mono unavailable
-    if (!g_font_mono) {
-        wcscpy_s(mono.lfFaceName, L"Consolas");
-        g_font_mono = CreateFontIndirectW(&mono);
-    }
-}
-
-// Create theme brushes
-inline void init_brushes() {
-    g_br_base = CreateSolidBrush(Theme::Base);
-    g_br_mantle = CreateSolidBrush(Theme::Mantle);
-    g_br_surface0 = CreateSolidBrush(Theme::Surface0);
-    g_br_surface1 = CreateSolidBrush(Theme::Surface1);
-    g_br_surface2 = CreateSolidBrush(Theme::Surface2);
-    g_br_crust = CreateSolidBrush(Theme::Crust);
-    g_br_blue = CreateSolidBrush(Theme::Blue);
-}
-
-inline void cleanup_gdi() {
-    for (HFONT* f : {&g_font, &g_font_bold, &g_font_mono, &g_font_title, &g_font_detail})
-        if (*f) { DeleteObject(*f); *f = nullptr; }
-    for (HBRUSH* b : {&g_br_base, &g_br_mantle, &g_br_surface0, &g_br_surface1, &g_br_surface2, &g_br_crust, &g_br_blue})
-        if (*b) { DeleteObject(*b); *b = nullptr; }
-}
