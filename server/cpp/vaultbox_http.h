@@ -104,7 +104,7 @@ inline void setup_routes(httplib::Server& svr) {
         de.folderId = body.value("folderId", "");
         de.favorite = body.value("favorite", false);
         if (VBCrypto::save_entry(de, true)) {
-            VBCrypto::refresh_vault();
+            VBCrypto::refresh_vault(); trigger_auto_backup();
             send_json(res, {{"success", true}, {"id", de.id}});
         } else {
             send_error(res, 500, "Failed to save entry");
@@ -127,7 +127,7 @@ inline void setup_routes(httplib::Server& svr) {
         de.folderId = body.value("folderId", "");
         de.favorite = body.value("favorite", false);
         if (VBCrypto::save_entry(de, false)) {
-            VBCrypto::refresh_vault();
+            VBCrypto::refresh_vault(); trigger_auto_backup();
             send_json(res, {{"success", true}});
         } else {
             send_error(res, 500, "Failed to update entry");
@@ -139,7 +139,7 @@ inline void setup_routes(httplib::Server& svr) {
         if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
         std::string id = req.matches[1].str();
         if (VBCrypto::delete_entry(id)) {
-            VBCrypto::refresh_vault();
+            VBCrypto::refresh_vault(); trigger_auto_backup();
             send_json(res, {{"success", true}});
         } else {
             send_error(res, 500, "Failed to delete entry");
@@ -154,7 +154,7 @@ inline void setup_routes(httplib::Server& svr) {
         if (name.empty()) { send_error(res, 400, "Folder name required"); return; }
         std::string fid = VBCrypto::save_folder(name, "");
         if (!fid.empty()) {
-            VBCrypto::refresh_vault();
+            VBCrypto::refresh_vault(); trigger_auto_backup();
             send_json(res, {{"success", true}, {"id", fid}});
         } else {
             send_error(res, 500, "Failed to create folder");
@@ -169,7 +169,7 @@ inline void setup_routes(httplib::Server& svr) {
         std::string name = body.value("name", "");
         if (name.empty()) { send_error(res, 400, "Folder name required"); return; }
         VBCrypto::save_folder(name, id);
-        VBCrypto::refresh_vault();
+        VBCrypto::refresh_vault(); trigger_auto_backup();
         send_json(res, {{"success", true}});
     });
 
@@ -178,7 +178,7 @@ inline void setup_routes(httplib::Server& svr) {
         if (!g_vault.unlocked) { send_error(res, 401, "Vault is locked"); return; }
         std::string id = req.matches[1].str();
         VBCrypto::delete_folder(id);
-        VBCrypto::refresh_vault();
+        VBCrypto::refresh_vault(); trigger_auto_backup();
         send_json(res, {{"success", true}});
     });
 
@@ -266,6 +266,55 @@ inline void setup_routes(httplib::Server& svr) {
         bool enable = body.value("enabled", false);
         bool ok = set_startup_enabled(enable);
         send_json(res, {{"success", ok}, {"enabled", get_startup_enabled()}});
+    });
+
+    // --- Cloud Backup ---
+    svr.Get("/api/vaultbox/backup", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, {
+            {"path", get_backup_path()},
+            {"autoBackup", get_auto_backup()},
+            {"lastBackup", get_last_backup_time()}
+        });
+    });
+    svr.Post("/api/vaultbox/backup/configure", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        std::string path = body.value("path", "");
+        set_backup_path(path);
+        if (body.contains("autoBackup")) set_auto_backup(body.value("autoBackup", false));
+        send_json(res, {
+            {"success", true},
+            {"path", get_backup_path()},
+            {"autoBackup", get_auto_backup()}
+        });
+    });
+    svr.Post("/api/vaultbox/backup/now", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, do_backup_now());
+    });
+    svr.Post("/api/vaultbox/backup/restore", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, do_restore_from_backup());
+    });
+    svr.Post("/api/vaultbox/backup/browse", [](const httplib::Request&, httplib::Response& res) {
+        // Return common cloud sync folder paths that exist on this system
+        json folders = json::array();
+        const char* userprofile = getenv("USERPROFILE");
+        if (!userprofile) { send_json(res, {{"folders", folders}}); return; }
+        std::string home(userprofile);
+        struct { const char* name; std::vector<std::string> paths; } providers[] = {
+            {"Google Drive", {home + "\\Google Drive", home + "\\My Drive", home + "\\Google Drive\\My Drive"}},
+            {"OneDrive", {home + "\\OneDrive", home + "\\OneDrive - Personal"}},
+            {"Dropbox", {home + "\\Dropbox"}},
+            {"iCloud Drive", {home + "\\iCloudDrive"}},
+        };
+        for (auto& p : providers) {
+            for (auto& dir : p.paths) {
+                if (fs::exists(dir) && fs::is_directory(dir)) {
+                    std::string backupDir = dir + "\\VaultBox";
+                    folders.push_back({{"name", p.name}, {"path", backupDir}});
+                    break;
+                }
+            }
+        }
+        send_json(res, {{"folders", folders}});
     });
 
     // --- Launch URI (fallback for non-WebView2 contexts) ---
@@ -596,6 +645,7 @@ inline void setup_routes(httplib::Server& svr) {
         }
         res.status = 200;
         vb_log("Import: " + std::to_string(ciphers_data.size()) + " ciphers, " + std::to_string(folders_data.size()) + " folders");
+        trigger_auto_backup();
     });
 
     auto get_cipher_handler = [](const httplib::Request& req, httplib::Response& res) {

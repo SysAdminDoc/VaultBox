@@ -2,7 +2,7 @@
 ; Requires Inno Setup 6+ (https://jrsoftware.org/isinfo.php)
 
 #define AppName "VaultBox"
-#define AppVersion "0.5.0"
+#define AppVersion "0.6.0"
 #define AppPublisher "SysAdminDoc"
 #define AppURL "https://github.com/SysAdminDoc/VaultBox"
 #define AppExeName "VaultBox.exe"

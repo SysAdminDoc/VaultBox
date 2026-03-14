@@ -235,6 +235,7 @@ R"VBHTML(<body>
         VaultBox
       </div>
       <div class="topbar-actions">
+        <button class="btn-icon" onclick="appCommand('launch:http://127.0.0.1:8787/')" title="Open Web Vault"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M0 8a8 8 0 1116 0A8 8 0 010 8zm7.5-6.923c-.67.204-1.335.82-1.887 1.855A7.97 7.97 0 005.145 4H7.5V1.077zM4.09 4a9.27 9.27 0 01.64-1.539 6.7 6.7 0 01.597-.933A7.025 7.025 0 002.255 4H4.09zm-.582 3.5c.03-.877.138-1.718.312-2.5H1.674a6.958 6.958 0 00-.656 2.5h2.49zM4.847 5a12.5 12.5 0 00-.338 2.5H7.5V5H4.847zM8.5 5v2.5h2.99a12.495 12.495 0 00-.337-2.5H8.5zM4.51 8.5a12.5 12.5 0 00.337 2.5H7.5V8.5H4.51zm3.99 0V11h2.653c.187-.765.306-1.608.338-2.5H8.5zM5.145 12c.138.386.295.744.468 1.068.552 1.035 1.218 1.65 1.887 1.855V12H5.145zm.182 2.472a6.696 6.696 0 01-.597-.933A9.268 9.268 0 014.09 12H2.255a7.024 7.024 0 003.072 2.472zM3.82 11a13.652 13.652 0 01-.312-2.5h-2.49c.062.89.291 1.733.656 2.5H3.82zm6.853 3.472A7.024 7.024 0 0013.745 12H11.91a9.27 9.27 0 01-.64 1.539 6.688 6.688 0 01-.597.933zM8.5 12v2.923c.67-.204 1.335-.82 1.887-1.855.173-.324.33-.682.468-1.068H8.5zm3.68-1h2.146c.365-.767.594-1.61.656-2.5h-2.49a13.65 13.65 0 01-.312 2.5zm2.802-3.5a6.959 6.959 0 00-.656-2.5H12.18c.174.782.282 1.623.312 2.5h2.49zM11.27 2.461c.247.464.462.98.64 1.539h1.835a7.024 7.024 0 00-3.072-2.472c.218.284.418.598.597.933zM10.855 4a7.966 7.966 0 00-.468-1.068C9.835 1.897 9.17 1.282 8.5 1.077V4h2.355z"/></svg></button>
         <button class="btn-icon" onclick="toggleLog()" title="Toggle log"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M14 1a1 1 0 011 1v8a1 1 0 01-1 1H4.414A2 2 0 003 11.586l-2 2V2a1 1 0 011-1h12zM2 0a2 2 0 00-2 2v12.793a.5.5 0 00.854.353l2.853-2.853A1 1 0 014.414 12H14a2 2 0 002-2V2a2 2 0 00-2-2H2z"/></svg></button>
         <button class="btn-icon" onclick="lockVault()" title="Lock vault"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 1a2 2 0 012 2v4H6V3a2 2 0 012-2zm3 6V3a3 3 0 00-6 0v4a2 2 0 00-2 2v5a2 2 0 002 2h6a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg></button>
         <button class="btn-icon" onclick="appCommand('minimize')" title="Minimize"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 8h8v1H4z"/></svg></button>
@@ -311,6 +312,9 @@ R"VBHTML(<body>
           <div class="item-list" id="item-list"></div>
         </div>
 
+)VBHTML"
+// --- Chunk 2b: HTML Body (generator, settings, dialogs) ---
+R"VBHTML(
         <!-- Generator View -->
         <div id="view-generator" style="display:none;overflow-y:auto">
           <div class="gen-container">
@@ -347,6 +351,28 @@ R"VBHTML(<body>
               </div>
             </div>
             <div class="settings-section">
+              <h3>Cloud Backup</h3>
+              <div style="font-size:12px;color:var(--text-sec);margin-bottom:12px">Back up your encrypted vault to a cloud-synced folder (Google Drive, OneDrive, Dropbox). Your vault is fully encrypted - safe for cloud storage.</div>
+              <div id="backup-detected" style="display:none;margin-bottom:12px"></div>
+              <div class="form-group" style="margin-bottom:8px">
+                <label>Backup Folder</label>
+                <div class="input-group">
+                  <input type="text" id="backup-path" class="form-input" placeholder="Select a cloud-synced folder..." readonly>
+                  <button class="btn btn-secondary btn-sm" onclick="browseBackupFolder()">Browse</button>
+                </div>
+              </div>
+              <div class="settings-row" style="padding-top:4px">
+                <span>Auto-backup on changes</span>
+                <label class="toggle"><input type="checkbox" id="autobackup-toggle" onchange="toggleAutoBackup(this.checked)"><span class="toggle-slider"></span></label>
+              </div>
+              <div id="backup-last" style="font-size:11px;color:var(--text-muted);margin:4px 0 12px"></div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" onclick="doBackupNow()">Backup Now</button>
+                <button class="btn btn-secondary btn-sm" onclick="doRestoreBackup()">Restore from Backup</button>
+                <button class="btn btn-ghost btn-sm" onclick="clearBackupConfig()" title="Remove backup configuration">Clear</button>
+              </div>
+            </div>
+            <div class="settings-section">
               <h3>Import</h3>
               <div style="display:flex;flex-wrap:wrap;gap:8px">
                 <button class="btn btn-secondary" onclick="doImport('bitwarden_json')">Bitwarden JSON</button>
@@ -371,12 +397,12 @@ R"VBHTML(<body>
             </div>
             <div class="about-info">
               <strong>VaultBox Desktop</strong><br>
-              Version <span id="about-version">0.5.0</span><br>
+              Version <span id="about-version">0.6.0</span><br>
               Offline Bitwarden-compatible password manager<br>
               Server: 127.0.0.1:8787<br><br>
               <span style="font-size:11px">Encryption: AES-256-CBC + HMAC-SHA256<br>
               Key derivation: PBKDF2-SHA256 (600K iterations)<br>
-              All data stored locally. Zero cloud dependency.</span>
+              All data stored locally. Cloud backup supported.</span>
             </div>
           </div>
         </div>
@@ -914,7 +940,7 @@ function showView(view) {
   document.getElementById('view-settings').style.display = view === 'settings' ? 'block' : 'none';
 
   if (view === 'generator') regenerate();
-  if (view === 'settings') loadStartupState();
+  if (view === 'settings') { loadStartupState(); loadBackupState(); }
   if (view !== 'vault') closeDetail();
 }
 
@@ -930,6 +956,122 @@ async function toggleStartup(enabled) {
     const data = await api('/api/vaultbox/startup', { method: 'POST', body: JSON.stringify({ enabled }) });
     document.getElementById('startup-toggle').checked = data.enabled;
     toast(data.enabled ? 'Start at login enabled' : 'Start at login disabled');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+)VBHTML"
+// --- Chunk 6: JavaScript (cloud backup, log, commands, init) ---
+R"VBHTML(
+// =====================================================================
+// Cloud Backup
+// =====================================================================
+async function loadBackupState() {
+  try {
+    const data = await api('/api/vaultbox/backup');
+    document.getElementById('backup-path').value = data.path || '';
+    document.getElementById('autobackup-toggle').checked = data.autoBackup || false;
+    if (data.lastBackup) {
+      document.getElementById('backup-last').textContent = 'Last backup: ' + formatDate(data.lastBackup);
+    } else {
+      document.getElementById('backup-last').textContent = '';
+    }
+    // Detect cloud providers
+    const browse = await api('/api/vaultbox/backup/browse', { method: 'POST' });
+    const det = document.getElementById('backup-detected');
+    if (browse.folders && browse.folders.length > 0 && !data.path) {
+      det.style.display = 'block';
+      det.innerHTML = '<div style="font-size:12px;font-weight:500;margin-bottom:6px">Detected cloud folders:</div>' +
+        browse.folders.map(f =>
+          `<button class="btn btn-secondary btn-sm" style="margin:2px" onclick="setBackupPath('${esc(f.path).replace(/\\/g,'\\\\')}')">${esc(f.name)}</button>`
+        ).join('');
+    } else {
+      det.style.display = 'none';
+    }
+  } catch (e) {}
+}
+
+async function setBackupPath(path) {
+  try {
+    await api('/api/vaultbox/backup/configure', { method: 'POST', body: JSON.stringify({ path }) });
+    toast('Backup folder set');
+    loadBackupState();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function browseBackupFolder() {
+  // Show modal with detected providers + custom path input
+  const browse = await api('/api/vaultbox/backup/browse', { method: 'POST' }).catch(() => ({folders:[]}));
+  let html = `<div class="modal-header"><h3>Select Backup Folder</h3><button class="btn-icon" onclick="closeModal()"><svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.647-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg></button></div>`;
+  html += '<div class="modal-body">';
+  if (browse.folders && browse.folders.length > 0) {
+    html += '<div style="margin-bottom:16px"><div style="font-size:13px;font-weight:500;margin-bottom:8px">Detected Cloud Providers</div>';
+    browse.folders.forEach(f => {
+      html += `<button class="btn btn-secondary" style="width:100%;margin-bottom:6px;justify-content:flex-start" onclick="setBackupPath('${esc(f.path).replace(/\\/g,'\\\\\\\\')}');closeModal()">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.406 3.342A5.53 5.53 0 018 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/></svg>
+        ${esc(f.name)}<span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${esc(f.path)}</span></button>`;
+    });
+    html += '</div>';
+  }
+  html += `<div style="font-size:13px;font-weight:500;margin-bottom:8px">Custom Path</div>
+    <div class="input-group"><input type="text" id="custom-backup-path" class="form-input" placeholder="C:\\Users\\You\\Dropbox\\VaultBox">
+    <button class="btn btn-primary btn-sm" onclick="setBackupPath(document.getElementById('custom-backup-path').value);closeModal()">Set</button></div>`;
+  html += '</div>';
+  openModal(html);
+}
+
+async function toggleAutoBackup(enabled) {
+  try {
+    await api('/api/vaultbox/backup/configure', { method: 'POST', body: JSON.stringify({ path: document.getElementById('backup-path').value, autoBackup: enabled }) });
+    toast(enabled ? 'Auto-backup enabled' : 'Auto-backup disabled');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function doBackupNow() {
+  try {
+    const path = document.getElementById('backup-path').value;
+    if (!path) { toast('Set a backup folder first', 'error'); return; }
+    const data = await api('/api/vaultbox/backup/now', { method: 'POST' });
+    if (data.success) {
+      toast('Vault backed up to ' + data.path);
+      loadBackupState();
+    } else {
+      toast(data.error || 'Backup failed', 'error');
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function doRestoreBackup() {
+  const path = document.getElementById('backup-path').value;
+  if (!path) { toast('Set a backup folder first', 'error'); return; }
+  openModal(`<div class="modal-header"><h3>Restore from Backup</h3><button class="btn-icon" onclick="closeModal()"><svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.647-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg></button></div>
+    <div class="modal-body"><p style="margin-bottom:16px;color:var(--text-sec)">This will replace your current vault with the backup from:<br><strong style="color:var(--text)">${esc(path)}\\vault.db</strong></p>
+    <p style="color:var(--danger);font-size:12px;margin-bottom:16px">Your current vault will be overwritten. Make sure you have a backup of your current vault if needed.</p></div>
+    <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-danger" onclick="confirmRestore()">Restore</button></div>`);
+}
+
+async function confirmRestore() {
+  closeModal();
+  try {
+    const data = await api('/api/vaultbox/backup/restore', { method: 'POST' });
+    if (data.success) {
+      toast('Vault restored. Please re-unlock.');
+      // Force back to unlock screen
+      vault = { entries: [], folders: [] };
+      selectedEntryId = null;
+      document.getElementById('main-app').style.display = 'none';
+      document.getElementById('unlock-screen').style.display = 'flex';
+      document.getElementById('unlock-password').value = '';
+    } else {
+      toast(data.error || 'Restore failed', 'error');
+    }
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function clearBackupConfig() {
+  try {
+    await api('/api/vaultbox/backup/configure', { method: 'POST', body: JSON.stringify({ path: '', autoBackup: false }) });
+    toast('Backup configuration cleared');
+    loadBackupState();
   } catch (e) { toast(e.message, 'error'); }
 }
 

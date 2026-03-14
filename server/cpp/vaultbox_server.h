@@ -72,7 +72,7 @@ namespace fs = std::filesystem;
 // ============================================================================
 // Version & Config
 // ============================================================================
-static const char* APP_VERSION = "0.5.0";
+static const char* APP_VERSION = "0.6.0";
 static const char* HOST = "127.0.0.1";
 static const int PORT = 8787;
 static const int TOKEN_EXPIRY_HOURS = 24 * 30;
@@ -359,6 +359,117 @@ inline bool get_startup_enabled() {
     bool exists = (RegQueryValueExW(hKey, STARTUP_REG_VALUE, nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
     RegCloseKey(hKey);
     return exists;
+}
+
+// ============================================================================
+// Cloud Backup (copy vault.db to/from a cloud-synced folder)
+// ============================================================================
+static const wchar_t* BACKUP_REG_KEY = L"Software\\VaultBox";
+
+inline std::string get_backup_path() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return "";
+    wchar_t buf[MAX_PATH] = {};
+    DWORD size = sizeof(buf), type = 0;
+    if (RegQueryValueExW(hKey, L"BackupPath", nullptr, &type, (BYTE*)buf, &size) != ERROR_SUCCESS || type != REG_SZ)
+        buf[0] = 0;
+    RegCloseKey(hKey);
+    return from_wstr(buf);
+}
+
+inline bool set_backup_path(const std::string& path) {
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        return false;
+    if (path.empty()) {
+        RegDeleteValueW(hKey, L"BackupPath");
+        RegDeleteValueW(hKey, L"AutoBackup");
+    } else {
+        std::wstring wp = to_wstr(path);
+        RegSetValueExW(hKey, L"BackupPath", 0, REG_SZ, (const BYTE*)wp.c_str(), (DWORD)((wp.size() + 1) * sizeof(wchar_t)));
+    }
+    RegCloseKey(hKey);
+    return true;
+}
+
+inline bool get_auto_backup() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return false;
+    DWORD val = 0, size = sizeof(val), type = 0;
+    bool ok = (RegQueryValueExW(hKey, L"AutoBackup", nullptr, &type, (BYTE*)&val, &size) == ERROR_SUCCESS && val != 0);
+    RegCloseKey(hKey);
+    return ok;
+}
+
+inline bool set_auto_backup(bool enable) {
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hKey, nullptr) != ERROR_SUCCESS)
+        return false;
+    DWORD val = enable ? 1 : 0;
+    RegSetValueExW(hKey, L"AutoBackup", 0, REG_DWORD, (const BYTE*)&val, sizeof(val));
+    RegCloseKey(hKey);
+    return true;
+}
+
+inline json do_backup_now() {
+    std::string backupDir = get_backup_path();
+    if (backupDir.empty()) return {{"success", false}, {"error", "No backup folder configured"}};
+    fs::path dest = fs::path(backupDir) / "vault.db";
+    try {
+        fs::create_directories(backupDir);
+        fs::copy_file(g_db_path, dest, fs::copy_options::overwrite_existing);
+        vb_log("Vault backed up to " + dest.string());
+        // Write timestamp
+        auto now = utcnow();
+        HKEY hKey;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hKey, nullptr) == ERROR_SUCCESS) {
+            std::wstring wts = to_wstr(now);
+            RegSetValueExW(hKey, L"LastBackup", 0, REG_SZ, (const BYTE*)wts.c_str(), (DWORD)((wts.size() + 1) * sizeof(wchar_t)));
+            RegCloseKey(hKey);
+        }
+        return {{"success", true}, {"timestamp", now}, {"path", dest.string()}};
+    } catch (const std::exception& e) {
+        vb_log("Backup failed: " + std::string(e.what()));
+        return {{"success", false}, {"error", e.what()}};
+    }
+}
+
+inline json do_restore_from_backup() {
+    std::string backupDir = get_backup_path();
+    if (backupDir.empty()) return {{"success", false}, {"error", "No backup folder configured"}};
+    fs::path src = fs::path(backupDir) / "vault.db";
+    if (!fs::exists(src)) return {{"success", false}, {"error", "No vault.db found in backup folder"}};
+    try {
+        // Clear in-memory vault state first
+        g_vault.clear();
+        fs::copy_file(src, g_db_path, fs::copy_options::overwrite_existing);
+        vb_log("Vault restored from " + src.string());
+        return {{"success", true}, {"path", src.string()}};
+    } catch (const std::exception& e) {
+        vb_log("Restore failed: " + std::string(e.what()));
+        return {{"success", false}, {"error", e.what()}};
+    }
+}
+
+inline std::string get_last_backup_time() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, BACKUP_REG_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return "";
+    wchar_t buf[128] = {};
+    DWORD size = sizeof(buf), type = 0;
+    if (RegQueryValueExW(hKey, L"LastBackup", nullptr, &type, (BYTE*)buf, &size) != ERROR_SUCCESS)
+        buf[0] = 0;
+    RegCloseKey(hKey);
+    return from_wstr(buf);
+}
+
+// Trigger auto-backup after vault changes (call from write endpoints)
+inline void trigger_auto_backup() {
+    if (get_auto_backup() && !get_backup_path().empty()) {
+        std::thread([]() { do_backup_now(); }).detach();
+    }
 }
 
 inline bool set_startup_enabled(bool enable) {
