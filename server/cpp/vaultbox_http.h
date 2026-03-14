@@ -257,6 +257,17 @@ inline void setup_routes(httplib::Server& svr) {
         }
     });
 
+    // --- Start at login ---
+    svr.Get("/api/vaultbox/startup", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, {{"enabled", get_startup_enabled()}});
+    });
+    svr.Post("/api/vaultbox/startup", [](const httplib::Request& req, httplib::Response& res) {
+        auto body = parse_body(req);
+        bool enable = body.value("enabled", false);
+        bool ok = set_startup_enabled(enable);
+        send_json(res, {{"success", ok}, {"enabled", get_startup_enabled()}});
+    });
+
     // --- Launch URI (fallback for non-WebView2 contexts) ---
     svr.Post("/api/vaultbox/launch", [](const httplib::Request& req, httplib::Response& res) {
         auto body = parse_body(req);

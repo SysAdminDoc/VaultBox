@@ -345,3 +345,36 @@ inline std::string from_wstr(const std::wstring& w) {
     return s;
 }
 
+// ============================================================================
+// Start at Login (registry)
+// ============================================================================
+static const wchar_t* STARTUP_REG_KEY = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+static const wchar_t* STARTUP_REG_VALUE = L"VaultBox";
+
+inline bool get_startup_enabled() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, STARTUP_REG_KEY, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return false;
+    DWORD type = 0, size = 0;
+    bool exists = (RegQueryValueExW(hKey, STARTUP_REG_VALUE, nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
+    RegCloseKey(hKey);
+    return exists;
+}
+
+inline bool set_startup_enabled(bool enable) {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, STARTUP_REG_KEY, 0, KEY_SET_VALUE, &hKey) != ERROR_SUCCESS)
+        return false;
+    bool ok;
+    if (enable) {
+        wchar_t exePath[MAX_PATH];
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        ok = (RegSetValueExW(hKey, STARTUP_REG_VALUE, 0, REG_SZ,
+            (const BYTE*)exePath, (DWORD)((wcslen(exePath) + 1) * sizeof(wchar_t))) == ERROR_SUCCESS);
+    } else {
+        ok = (RegDeleteValueW(hKey, STARTUP_REG_VALUE) == ERROR_SUCCESS);
+    }
+    RegCloseKey(hKey);
+    return ok;
+}
+

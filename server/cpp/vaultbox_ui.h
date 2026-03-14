@@ -155,6 +155,12 @@ textarea.form-input{resize:vertical;min-height:80px}
 .settings-section h3{font-size:14px;color:var(--text-sec);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
 .settings-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0}
 .settings-row span{font-size:13px}
+.toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--bg-input);border-radius:11px;cursor:pointer;transition:all var(--transition)}
+.toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:var(--text-sec);border-radius:50%;transition:all var(--transition)}
+.toggle input:checked+.toggle-slider{background:var(--primary)}
+.toggle input:checked+.toggle-slider::before{transform:translateX(18px);background:#fff}
 .about-info{text-align:center;padding:32px 0;color:var(--text-sec);font-size:13px;line-height:1.8}
 .about-info strong{color:var(--text);font-size:15px}
 
@@ -231,7 +237,7 @@ R"VBHTML(<body>
       <div class="topbar-actions">
         <button class="btn-icon" onclick="toggleLog()" title="Toggle log"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M14 1a1 1 0 011 1v8a1 1 0 01-1 1H4.414A2 2 0 003 11.586l-2 2V2a1 1 0 011-1h12zM2 0a2 2 0 00-2 2v12.793a.5.5 0 00.854.353l2.853-2.853A1 1 0 014.414 12H14a2 2 0 002-2V2a2 2 0 00-2-2H2z"/></svg></button>
         <button class="btn-icon" onclick="lockVault()" title="Lock vault"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 1a2 2 0 012 2v4H6V3a2 2 0 012-2zm3 6V3a3 3 0 00-6 0v4a2 2 0 00-2 2v5a2 2 0 002 2h6a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg></button>
-        <button class="btn-icon" onclick="appCommand('minimize')" title="Minimize to tray"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 8h8v1H4z"/></svg></button>
+        <button class="btn-icon" onclick="appCommand('minimize')" title="Minimize"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4 8h8v1H4z"/></svg></button>
       </div>
     </div>
 
@@ -334,6 +340,13 @@ R"VBHTML(<body>
           <div class="settings-container">
             <h2>Settings</h2>
             <div class="settings-section">
+              <h3>Application</h3>
+              <div class="settings-row">
+                <span>Start at login</span>
+                <label class="toggle"><input type="checkbox" id="startup-toggle" onchange="toggleStartup(this.checked)"><span class="toggle-slider"></span></label>
+              </div>
+            </div>
+            <div class="settings-section">
               <h3>Import</h3>
               <div style="display:flex;flex-wrap:wrap;gap:8px">
                 <button class="btn btn-secondary" onclick="doImport('bitwarden_json')">Bitwarden JSON</button>
@@ -358,7 +371,7 @@ R"VBHTML(<body>
             </div>
             <div class="about-info">
               <strong>VaultBox Desktop</strong><br>
-              Version <span id="about-version">0.4.0</span><br>
+              Version <span id="about-version">0.5.0</span><br>
               Offline Bitwarden-compatible password manager<br>
               Server: 127.0.0.1:8787<br><br>
               <span style="font-size:11px">Encryption: AES-256-CBC + HMAC-SHA256<br>
@@ -901,7 +914,23 @@ function showView(view) {
   document.getElementById('view-settings').style.display = view === 'settings' ? 'block' : 'none';
 
   if (view === 'generator') regenerate();
+  if (view === 'settings') loadStartupState();
   if (view !== 'vault') closeDetail();
+}
+
+async function loadStartupState() {
+  try {
+    const data = await api('/api/vaultbox/startup');
+    document.getElementById('startup-toggle').checked = data.enabled;
+  } catch (e) {}
+}
+
+async function toggleStartup(enabled) {
+  try {
+    const data = await api('/api/vaultbox/startup', { method: 'POST', body: JSON.stringify({ enabled }) });
+    document.getElementById('startup-toggle').checked = data.enabled;
+    toast(data.enabled ? 'Start at login enabled' : 'Start at login disabled');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 // =====================================================================

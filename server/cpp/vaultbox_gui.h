@@ -146,9 +146,12 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
         std::string cmd = j.value("command", "");
 
         if (cmd == "minimize") {
-            ShowWindow(hwnd, SW_HIDE);
+            ShowWindow(hwnd, SW_MINIMIZE);
         } else if (cmd == "quit") {
             PostMessage(hwnd, WM_CLOSE, 0, 0);
+        } else if (cmd == "opendata") {
+            std::wstring wpath = to_wstr(g_data_dir.string());
+            ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (cmd.rfind("launch:", 0) == 0) {
             std::string uri = cmd.substr(7);
             std::wstring wuri = to_wstr(uri);
@@ -156,9 +159,12 @@ inline void handle_app_command(HWND hwnd, const std::string& msg) {
         }
     } catch (...) {
         if (msg == "minimize") {
-            ShowWindow(hwnd, SW_HIDE);
+            ShowWindow(hwnd, SW_MINIMIZE);
         } else if (msg == "quit") {
             PostMessage(hwnd, WM_CLOSE, 0, 0);
+        } else if (msg == "opendata") {
+            std::wstring wpath = to_wstr(g_data_dir.string());
+            ShellExecuteW(nullptr, L"open", wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         } else if (msg.rfind("launch:", 0) == 0) {
             std::string uri = msg.substr(7);
             std::wstring wuri = to_wstr(uri);
