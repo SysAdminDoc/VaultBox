@@ -1487,15 +1487,8 @@ export default class MainBackground {
       this.accountService,
     );
 
-    if (chrome.webRequest != null && chrome.webRequest.onAuthRequired != null) {
-      this.webRequestBackground = new WebRequestBackground(
-        this.platformUtilsService,
-        this.cipherService,
-        this.authService,
-        this.accountService,
-        chrome.webRequest,
-      );
-    }
+    // VaultBox: Disabled WebRequestBackground — HTTP auth auto-fill requires
+    // webRequestBlocking permission which is enterprise-only in MV3
 
     this.userAutoUnlockKeyService = new UserAutoUnlockKeyService(this.keyService);
 
