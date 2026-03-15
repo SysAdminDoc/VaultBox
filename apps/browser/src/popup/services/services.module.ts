@@ -250,7 +250,8 @@ const safeProviders: SafeProvider[] = [
   safeProvider(InlineMenuFieldQualificationService),
   safeProvider({
     provide: DEFAULT_VAULT_TIMEOUT,
-    useValue: VaultTimeoutStringType.OnRestart,
+    // VaultBox: Default to never timeout for offline vault
+    useValue: VaultTimeoutStringType.Never,
   }),
   safeProvider({
     provide: APP_INITIALIZER as SafeInjectionToken<() => Promise<void>>,

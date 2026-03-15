@@ -43,22 +43,17 @@ export class VaultPopupSectionService {
   private readonly temporaryStateOverride = signal<Partial<PopupSectionOpen> | null>(null);
 
   constructor() {
-    effect(
-      () => {
-        /**
-         * auto-open all sections when search or filter is applied, and remove
-         * override when search or filter is removed
-         */
-        if (this.hasFilterOrSearchApplied()) {
-          this.temporaryStateOverride.set(INITIAL_OPEN);
-        } else {
-          this.temporaryStateOverride.set(null);
-        }
-      },
-      {
-        allowSignalWrites: true,
-      },
-    );
+    effect(() => {
+      /**
+       * auto-open all sections when search or filter is applied, and remove
+       * override when search or filter is removed
+       */
+      if (this.hasFilterOrSearchApplied()) {
+        this.temporaryStateOverride.set(INITIAL_OPEN);
+      } else {
+        this.temporaryStateOverride.set(null);
+      }
+    });
   }
 
   /**

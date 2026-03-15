@@ -769,7 +769,7 @@ export default class MainBackground {
       this.biometricStateService,
       this.stateProvider,
       this.logService,
-      VaultTimeoutStringType.OnRestart, // default vault timeout
+      VaultTimeoutStringType.Never, // VaultBox: default to never timeout for offline vault
       sessionTimeoutTypeService,
     );
 
