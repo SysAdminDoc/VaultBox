@@ -32,8 +32,9 @@ export function buildCipherIcon(
     RuPay: "card-ru-pay",
   };
 
+  // VaultBox: Always allow favicons via DuckDuckGo (no Bitwarden icons server needed)
   if (iconsServerUrl == null) {
-    showFavicon = false;
+    iconsServerUrl = "https://icons.duckduckgo.com/ip3";
   }
 
   const cipherType = CipherViewLikeUtils.getType(cipher);
@@ -75,7 +76,9 @@ export function buildCipherIcon(
 
         if (showFavicon && isWebsite) {
           try {
-            image = `${iconsServerUrl}/${Utils.getHostname(hostnameUri)}/icon.png`;
+            const hostname = Utils.getHostname(hostnameUri);
+            // VaultBox: Use DuckDuckGo favicon service instead of Bitwarden icons server
+            image = `https://icons.duckduckgo.com/ip3/${hostname}.ico`;
             fallbackImage = "images/bwi-globe.png";
           } catch {
             // Ignore error since the fallback icon will be shown if image is null.

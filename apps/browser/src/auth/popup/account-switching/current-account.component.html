@@ -5,7 +5,7 @@
     class="tw-rounded-full hover:tw-outline hover:tw-outline-1 hover:tw-outline-primary-600"
     (click)="currentAccountClicked()"
   >
-    <span class="tw-sr-only"> {{ "bitwardenAccount" | i18n }} {{ currentAccount.email }}</span>
+    <span class="tw-sr-only"> VaultBox {{ currentAccount.email }}</span>
     <bit-avatar
       [id]="currentAccount.id"
       [text]="currentAccount.name"

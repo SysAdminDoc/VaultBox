@@ -37,43 +37,19 @@
         <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
       </a>
     </bit-item>
-    @if (showArchiveItem()) {
-      @if (userCanArchive()) {
-        <bit-item>
-          <a data-test-id="archive-link" bit-item-content routerLink="/archive">
-            {{ "archiveNoun" | i18n }}
-            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-          </a>
-        </bit-item>
-      } @else {
-        <bit-item>
-          <a
-            data-test-id="premium-archive-link"
-            bit-item-content
-            href="#"
-            (click)="conditionallyRouteToArchive($event)"
-          >
-            <span class="tw-flex tw-items-center tw-gap-2">
-              {{ "archiveNoun" | i18n }}
-              <app-premium-badge></app-premium-badge>
-            </span>
-            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-          </a>
-        </bit-item>
-      }
-    }
+    <!-- VaultBox: Archive available without premium -->
+    <bit-item>
+      <a data-test-id="archive-link" bit-item-content routerLink="/archive">
+        {{ "archiveNoun" | i18n }}
+        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+      </a>
+    </bit-item>
     <bit-item>
       <a bit-item-content routerLink="/trash">
         {{ "trash" | i18n }}
         <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
       </a>
     </bit-item>
-    <bit-item>
-      <button type="button" bit-item-content (click)="sync()">
-        {{ "syncNow" | i18n }}
-        <span slot="secondary">{{ lastSync }}</span>
-        <i slot="end" class="bwi bwi-refresh" aria-hidden="true"></i>
-      </button>
-    </bit-item>
+    <!-- VaultBox: Sync Now removed (offline vault) -->
   </bit-item-group>
 </popup-page>

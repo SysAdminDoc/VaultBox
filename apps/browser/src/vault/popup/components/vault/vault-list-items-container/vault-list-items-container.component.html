@@ -114,14 +114,7 @@
             </div>
             <span data-testid="item-name">{{ cipher.name }}</span>
             <div slot="default-trailing" class="tw-flex tw-gap-1.5">
-              <i
-                *ngIf="cipher.organizationId"
-                slot="default-trailing"
-                appOrgIcon
-                [tierType]="cipher.organization!.productTierType"
-                [size]="'small'"
-                [appA11yTitle]="orgIconTooltip(cipher)"
-              ></i>
+              <!-- VaultBox: Removed org icon (offline vault) -->
               <i
                 *ngIf="CipherViewLikeUtils.hasAttachments(cipher)"
                 class="bwi bwi-paperclip bwi-sm"
