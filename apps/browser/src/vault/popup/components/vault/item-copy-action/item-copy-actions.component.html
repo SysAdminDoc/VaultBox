@@ -21,16 +21,6 @@
         [label]="'copyPassword' | i18n"
       ></button>
     </bit-item-action>
-    <bit-item-action>
-      <button
-        type="button"
-        bitIconButton="bwi-clock"
-        size="small"
-        appCopyField="totp"
-        [cipher]="cipher"
-        [label]="'copyVerificationCode' | i18n"
-      ></button>
-    </bit-item-action>
   </ng-container>
 
   <ng-template #loginCopyMenu>
@@ -67,9 +57,6 @@
             [cipher]="cipher"
           >
             {{ "copyPassword" | i18n }}
-          </button>
-          <button type="button" bitMenuItem appCopyField="totp" [cipher]="cipher">
-            {{ "copyVerificationCode" | i18n }}
           </button>
         </bit-menu>
       </ng-container>

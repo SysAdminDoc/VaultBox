@@ -47,12 +47,10 @@ import { ImportBrowserV2Component } from "../tools/popup/settings/import/import-
 import { SettingsV2Component } from "../tools/popup/settings/settings-v2.component";
 import { AddEditComponent } from "../vault/popup/components/vault/add-edit/add-edit.component";
 import { AttachmentsComponent } from "../vault/popup/components/vault/attachments/attachments.component";
-import { IntroCarouselComponent } from "../vault/popup/components/vault/intro-carousel/intro-carousel.component";
 import { PasswordHistoryComponent } from "../vault/popup/components/vault/vault-password-history/vault-password-history.component";
 import { VaultComponent } from "../vault/popup/components/vault/vault.component";
 import { ViewComponent } from "../vault/popup/components/vault/view/view.component";
 import { clearVaultStateGuard } from "../vault/popup/guards/clear-vault-state.guard";
-import { IntroCarouselGuard } from "../vault/popup/guards/intro-carousel.guard";
 import { AppearanceComponent } from "../vault/popup/settings/appearance.component";
 import { ArchiveComponent } from "../vault/popup/settings/archive.component";
 import { FoldersComponent } from "../vault/popup/settings/folders.component";
@@ -300,7 +298,8 @@ const routes: Routes = [
       },
       {
         path: AuthRoute.Login,
-        canActivate: [unauthGuardFn(unauthRouteOverrides), IntroCarouselGuard],
+        // VaultBox: IntroCarouselGuard removed — go straight to login
+        canActivate: [unauthGuardFn(unauthRouteOverrides)],
         data: {
           pageIcon: VaultIcon,
           pageTitle: {
@@ -408,22 +407,7 @@ const routes: Routes = [
     canActivate: [authGuard],
     data: { elevation: 1 } satisfies RouteDataProperties,
   },
-  {
-    path: "intro-carousel",
-    component: ExtensionAnonLayoutWrapperComponent,
-    canActivate: [],
-    data: { elevation: 0, doNotSaveUrl: true } satisfies RouteDataProperties,
-    children: [
-      {
-        path: "",
-        component: IntroCarouselComponent,
-        data: {
-          pageIcon: null,
-          hideFooter: true,
-        } satisfies ExtensionAnonLayoutWrapperData,
-      },
-    ],
-  },
+  // VaultBox: Intro carousel route removed
   {
     path: "tabs",
     component: TabsV2Component,
