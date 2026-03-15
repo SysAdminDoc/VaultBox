@@ -125,20 +125,21 @@ export class VaultListItemsContainerComponent implements AfterViewInit {
 
   /**
    * The class used to set the height of a bit item's inner content.
+   * VaultBox: Reduced from 52px to 38px for denser vault display.
    */
-  protected readonly itemHeightClass = `tw-h-[52px]`;
+  protected readonly itemHeightClass = `tw-h-[38px]`;
 
   /**
    * The height of a bit item in pixels. Includes any margin, padding, or border. Used by the virtual scroll
    * to estimate how many items can be displayed at once and how large the virtual container should be.
    * Needs to be updated if the item height or spacing changes.
    *
-   * Default: 52px + 1px border + 6px bottom margin = 59px
+   * Default: 38px + 1px border + 6px bottom margin = 45px
    *
-   * Compact mode: 52px + 1px border = 53px
+   * Compact mode: 38px + 1px border = 39px
    */
   protected readonly itemHeight$ = this.compactModeService.enabled$.pipe(
-    map((enabled) => (enabled ? 53 : 59)),
+    map((enabled) => (enabled ? 39 : 45)),
   );
 
   /**
