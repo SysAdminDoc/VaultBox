@@ -204,7 +204,14 @@ export class Fido2Background implements Fido2BackgroundInterface {
    */
   private async updateMv3ContentScriptsRegistration() {
     if (await this.isPasskeySettingEnabled()) {
-      void BrowserApi.registerContentScriptsMv3([
+      try {
+        await BrowserApi.unregisterContentScriptsMv3({
+          ids: [Fido2ContentScriptId.PageScript, Fido2ContentScriptId.ContentScript],
+        });
+      } catch {
+        // Scripts may not be registered yet
+      }
+      await BrowserApi.registerContentScriptsMv3([
         {
           id: Fido2ContentScriptId.PageScript,
           js: [Fido2ContentScript.PageScript],
@@ -221,9 +228,13 @@ export class Fido2Background implements Fido2BackgroundInterface {
       return;
     }
 
-    void BrowserApi.unregisterContentScriptsMv3({
-      ids: [Fido2ContentScriptId.PageScript, Fido2ContentScriptId.ContentScript],
-    });
+    try {
+      await BrowserApi.unregisterContentScriptsMv3({
+        ids: [Fido2ContentScriptId.PageScript, Fido2ContentScriptId.ContentScript],
+      });
+    } catch {
+      // Scripts may not be registered
+    }
   }
 
   /**

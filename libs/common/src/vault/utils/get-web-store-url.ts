@@ -17,6 +17,6 @@ export const getWebStoreUrl = (deviceType: DeviceType): string => {
     case DeviceType.EdgeBrowser:
       return "https://microsoftedge.microsoft.com/addons/detail/jbkfoedolllekgbhcbcoahefnbanhhlh";
     default:
-      return "https://bitwarden.com/download/#downloads-web-browser";
+      return "https://github.com/SysAdminDoc/VaultBox";
   }
 };

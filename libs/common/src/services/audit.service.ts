@@ -6,9 +6,6 @@ import { AuditService as AuditServiceAbstraction } from "../abstractions/audit.s
 import { BreachAccountResponse } from "../dirt/models/response/breach-account.response";
 import { HibpApiService } from "../dirt/services/hibp-api.service";
 import { CryptoFunctionService } from "../key-management/crypto/abstractions/crypto-function.service";
-import { Utils } from "../platform/misc/utils";
-
-const PwnedPasswordsApi = "https://api.pwnedpasswords.com/range/";
 
 export class AuditService implements AuditServiceAbstraction {
   private passwordLeakedSubject = new Subject<{
@@ -54,18 +51,8 @@ export class AuditService implements AuditServiceAbstraction {
    * @returns A promise that resolves to the number of times the password has been leaked.
    */
   protected async fetchLeakedPasswordCount(password: string): Promise<number> {
-    const hashBytes = await this.cryptoFunctionService.hash(password, "sha1");
-    const hash = Utils.fromArrayToHex(hashBytes)!.toUpperCase();
-    const hashStart = hash.substr(0, 5);
-    const hashEnding = hash.substr(5);
-
-    const response = await this.apiService.nativeFetch(new Request(PwnedPasswordsApi + hashStart));
-    const leakedHashes = await response.text();
-    const match = leakedHashes.split(/\r?\n/).find((v) => {
-      return v.split(":")[0] === hashEnding;
-    });
-
-    return match != null ? parseInt(match.split(":")[1], 10) : 0;
+    // VaultBox: No external network calls - always return 0 (not leaked)
+    return 0;
   }
 
   async breachedAccounts(username: string): Promise<BreachAccountResponse[]> {

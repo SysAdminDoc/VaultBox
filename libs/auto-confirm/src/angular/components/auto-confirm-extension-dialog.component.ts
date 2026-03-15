@@ -53,7 +53,7 @@ import {
           <a
             class="tw-text-sm tw-text-center"
             bitLink
-            href="https://bitwarden.com/help/automatic-confirmation/"
+            href="https://github.com/SysAdminDoc/VaultBox"
             target="_blank"
           >
             <strong class="tw-pr-1">

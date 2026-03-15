@@ -120,7 +120,7 @@ export const BrowserShortcutsUris = {
   Opera: "opera://extensions/shortcuts",
   Edge: "edge://extensions/shortcuts",
   Vivaldi: "vivaldi://extensions/shortcuts",
-  Unknown: "https://bitwarden.com/help/keyboard-shortcuts",
+  Unknown: "https://github.com/SysAdminDoc/VaultBox",
 } as const;
 
 export const DisablePasswordManagerUris = {
@@ -128,7 +128,7 @@ export const DisablePasswordManagerUris = {
   Opera: "opera://settings/autofill",
   Edge: "edge://settings/passwords",
   Vivaldi: "vivaldi://settings/autofill",
-  Unknown: "https://bitwarden.com/help/disable-browser-autofill/",
+  Unknown: "https://github.com/SysAdminDoc/VaultBox",
 } as const;
 
 export const ExtensionCommand = {

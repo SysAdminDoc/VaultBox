@@ -120,14 +120,16 @@ export class AutoSubmitLoginBackground implements AutoSubmitLoginBackgroundAbstr
     }
 
     BrowserApi.addListener(chrome.runtime.onMessage, this.handleExtensionMessage);
-    chrome.webRequest.onBeforeRequest.addListener(this.handleOnBeforeRequest, {
-      urls: ["<all_urls>"],
-      types: ["main_frame", "sub_frame"],
-    });
-    chrome.webRequest.onBeforeRedirect.addListener(this.handleWebRequestOnBeforeRedirect, {
-      urls: ["<all_urls>"],
-      types: ["main_frame", "sub_frame"],
-    });
+    if (chrome.webRequest) {
+      chrome.webRequest.onBeforeRequest.addListener(this.handleOnBeforeRequest, {
+        urls: ["<all_urls>"],
+        types: ["main_frame", "sub_frame"],
+      });
+      chrome.webRequest.onBeforeRedirect.addListener(this.handleWebRequestOnBeforeRedirect, {
+        urls: ["<all_urls>"],
+        types: ["main_frame", "sub_frame"],
+      });
+    }
 
     if (this.isSafariBrowser) {
       this.initSafari().catch((error) => this.logService.error(error));
@@ -677,8 +679,10 @@ export class AutoSubmitLoginBackground implements AutoSubmitLoginBackgroundAbstr
    */
   private destroy() {
     BrowserApi.removeListener(chrome.runtime.onMessage, this.handleExtensionMessage);
-    chrome.webRequest.onBeforeRequest.removeListener(this.handleOnBeforeRequest);
-    chrome.webRequest.onBeforeRedirect.removeListener(this.handleWebRequestOnBeforeRedirect);
+    if (chrome.webRequest) {
+      chrome.webRequest.onBeforeRequest.removeListener(this.handleOnBeforeRequest);
+      chrome.webRequest.onBeforeRedirect.removeListener(this.handleWebRequestOnBeforeRedirect);
+    }
     chrome.webNavigation.onCompleted.removeListener(this.handleAutoSubmitHostNavigationCompleted);
     chrome.webNavigation.onCompleted.removeListener(this.handleSafariWebNavigationOnCompleted);
     chrome.tabs.onActivated.removeListener(this.handleSafariTabOnActivated);

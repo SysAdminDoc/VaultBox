@@ -7,8 +7,6 @@ import {
   VaultActive,
   GeneratorInactive,
   GeneratorActive,
-  SendInactive,
-  SendActive,
   SettingsInactive,
   SettingsActive,
 } from "@bitwarden/assets/svg";
@@ -43,12 +41,6 @@ export class TabsV2Component {
           page: "/tabs/generator",
           icon: GeneratorInactive,
           iconActive: GeneratorActive,
-        },
-        {
-          label: "send",
-          page: "/tabs/send",
-          icon: SendInactive,
-          iconActive: SendActive,
         },
         {
           label: "settings",

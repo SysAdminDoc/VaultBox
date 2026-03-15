@@ -210,6 +210,9 @@ export class OverlayNotificationsBackground implements OverlayNotificationsBackg
    * that we are only listening for form submission requests on the tabs that have fillable form fields.
    */
   private setupWebRequestsListeners() {
+    if (!chrome.webRequest) {
+      return;
+    }
     chrome.webRequest.onBeforeRequest.removeListener(this.handleOnBeforeRequestEvent);
     chrome.webRequest.onCompleted.removeListener(this.handleOnCompletedRequestEvent);
     if (this.websiteOriginsWithFields.size) {

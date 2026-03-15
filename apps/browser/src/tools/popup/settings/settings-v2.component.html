@@ -1,21 +1,5 @@
 <popup-page>
-  @if (!(hasPremium$ | async)) {
-    <bit-spotlight persistent>
-      <span class="tw-text-xs"
-        >{{ "unlockFeaturesWithPremium" | i18n }}
-        <button
-          bitLink
-          buttonType="primary"
-          class="tw-text-xs"
-          type="button"
-          (click)="openUpgradeDialog()"
-          [title]="'upgradeNow' | i18n"
-        >
-          {{ "upgradeNow" | i18n }}
-        </button>
-      </span>
-    </bit-spotlight>
-  }
+  <!-- VaultBox: Removed premium upgrade banner -->
   <popup-header slot="header" pageTitle="{{ 'settings' | i18n }}">
     <ng-container slot="end">
       <app-pop-out></app-pop-out>
@@ -84,22 +68,7 @@
       </a>
     </bit-item>
 
-    @if (showAdminSettingsLink$ | async) {
-      <bit-item>
-        <a bit-item-content routerLink="/admin" [truncate]="false">
-          <i slot="start" class="bwi bwi-business" aria-hidden="true"></i>
-          <div class="tw-flex tw-items-center tw-justify-center">
-            <p class="tw-pr-2">{{ "admin" | i18n }}</p>
-            @if (showAdminBadge$ | async) {
-              <span bitBadge variant="notification" [attr.aria-label]="'nudgeBadgeAria' | i18n"
-                >1</span
-              >
-            }
-          </div>
-          <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-        </a>
-      </bit-item>
-    }
+    <!-- VaultBox: Removed admin settings link (organizations/auto-confirm) -->
 
     <bit-item>
       <a bit-item-content routerLink="/about" [truncate]="false">

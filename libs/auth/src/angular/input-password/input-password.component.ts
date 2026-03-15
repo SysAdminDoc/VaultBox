@@ -676,9 +676,7 @@ export class InputPasswordComponent implements OnInit {
         });
 
         if (learnMore) {
-          this.platformUtilsService.launchUri(
-            "https://bitwarden.com/help/attachments/#add-storage-space",
-          );
+          this.platformUtilsService.launchUri("https://github.com/SysAdminDoc/VaultBox");
         }
 
         rotateUserKeyCtrl.setValue(false);

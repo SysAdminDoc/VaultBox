@@ -53,7 +53,7 @@ export class DecryptionFailureDialogComponent {
 
   openContactSupport(event: Event) {
     event.preventDefault();
-    this.platformUtilsService.launchUri("https://bitwarden.com/contact");
+    this.platformUtilsService.launchUri("https://github.com/SysAdminDoc/VaultBox/issues");
   }
 
   static open(dialogService: DialogService, params: DecryptionFailureDialogParams) {

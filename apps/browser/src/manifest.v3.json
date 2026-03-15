@@ -63,6 +63,7 @@
     "tabs",
     "unlimitedStorage",
     "webNavigation",
+    "webRequest",
     "notifications"
   ],
   "__firefox__permissions": [
@@ -153,7 +154,6 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "content/fido2-page-script.js",
         "notification/bar.html",
         "images/icon38.png",
         "images/icon38_locked.png",
