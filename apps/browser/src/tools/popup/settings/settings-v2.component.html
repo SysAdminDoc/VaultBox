@@ -18,39 +18,15 @@
     <bit-item>
       <a bit-item-content routerLink="/autofill" [truncate]="false">
         <i slot="start" class="bwi bwi-check-circle" aria-hidden="true"></i>
-        <div class="tw-flex tw-items-center tw-justify-center">
-          <p class="tw-pr-2">{{ "autofill" | i18n }}</p>
-          @if (showAutofillBadge$ | async) {
-            <span bitBadge variant="notification" [attr.aria-label]="'nudgeBadgeAria' | i18n"
-              >1</span
-            >
-          }
-        </div>
+        {{ "autofill" | i18n }}
         <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
       </a>
     </bit-item>
     <!-- VaultBox: Removed notifications settings (cloud push notifications) -->
     <bit-item>
-      <a
-        bit-item-content
-        routerLink="/vault-settings"
-        (click)="dismissBadge(NudgeType.EmptyVaultNudge)"
-        [truncate]="false"
-      >
+      <a bit-item-content routerLink="/vault-settings" [truncate]="false">
         <i slot="start" class="bwi bwi-vault" aria-hidden="true"></i>
-        <div class="tw-flex tw-items-center tw-justify-center">
-          <p class="tw-pr-2">{{ "settingsVaultOptions" | i18n }}</p>
-          <!--
-            Currently can be only 1 item for notification.
-            Will make this dynamic when more nudges are added
-          -->
-          @if (showVaultBadge$ | async) {
-            <span bitBadge variant="notification" [attr.aria-label]="'nudgeBadgeAria' | i18n"
-              >1</span
-            >
-          }
-        </div>
-
+        {{ "settingsVaultOptions" | i18n }}
         <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
       </a>
     </bit-item>

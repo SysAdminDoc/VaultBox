@@ -40,7 +40,8 @@ export class VaultHeaderComponent {
   /** Emits the visibility status of the disclosure component. */
   protected isDisclosureShown$ = this.vaultPopupListFiltersService.filterVisibilityState$.pipe(
     runInsideAngular(inject(NgZone)), // Browser state updates can happen outside of `ngZone`
-    map((v) => v ?? true),
+    // VaultBox: Default filters to collapsed for compact layout
+    map((v) => v ?? false),
   );
 
   // Only use the first value to avoid an infinite loop from two-way binding

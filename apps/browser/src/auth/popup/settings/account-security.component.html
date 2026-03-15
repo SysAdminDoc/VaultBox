@@ -5,13 +5,7 @@
     </ng-container>
   </popup-header>
 
-  <bit-spotlight
-    *ngIf="showAccountSecurityNudge$ | async"
-    [title]="'unlockVault' | i18n"
-    [subtitle]="'unlockVaultDesc' | i18n"
-    (onDismiss)="dismissAccountSecurityNudge()"
-    class="tw-mb-6"
-  ></bit-spotlight>
+  <!-- VaultBox: Removed account security nudge spotlight -->
   @if (loading()) {
     <div class="tw-h-full tw-place-content-center"><bit-spinner></bit-spinner></div>
   } @else {
