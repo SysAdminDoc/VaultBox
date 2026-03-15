@@ -30,7 +30,9 @@ import { LockComponent } from "@bitwarden/key-management-ui";
 
 import { AccountSwitcherComponent } from "../auth/popup/account-switching/account-switcher.component";
 import { AuthExtensionRoute } from "../auth/popup/constants/auth-extension-route.constant";
+import { fido2AuthGuard } from "../auth/popup/guards/fido2-auth.guard";
 import { AccountSecurityComponent } from "../auth/popup/settings/account-security.component";
+import { Fido2Component } from "../autofill/popup/fido2/fido2.component";
 import { AutofillComponent } from "../autofill/popup/settings/autofill.component";
 import { BlockedDomainsComponent } from "../autofill/popup/settings/blocked-domains.component";
 import { ExcludedDomainsComponent } from "../autofill/popup/settings/excluded-domains.component";
@@ -125,6 +127,15 @@ const routes: Routes = [
         } satisfies RouteDataProperties & AnonLayoutWrapperData,
       },
     ],
+  },
+  {
+    path: "fido2",
+    component: Fido2Component,
+    canActivate: [fido2AuthGuard],
+    data: {
+      elevation: 1,
+      doNotSaveUrl: true,
+    } satisfies RouteDataProperties,
   },
   {
     path: "view-cipher",
