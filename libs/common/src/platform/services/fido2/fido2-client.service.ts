@@ -98,7 +98,7 @@ export class Fido2ClientService<
     }
 
     const serverConfig = await firstValueFrom(this.configService.serverConfig$);
-    const isOriginEqualBitwardenVault = origin === serverConfig.environment?.vault;
+    const isOriginEqualBitwardenVault = origin === serverConfig?.environment?.vault;
     if (isOriginEqualBitwardenVault) {
       return false;
     }

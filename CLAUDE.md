@@ -47,7 +47,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& 'C:\Program Files\
 - **sqlite3.obj**: Pre-compiled, linked directly (not recompiled each build).
 - **WebView2 SDK**: Headers + static lib in `deps/webview2/`.
 
-## Current Version: v0.8.2
+## Current Version: v0.8.3
 
 Features: auto-lock timer, clipboard auto-clear, password strength meter, TOTP display, dark/light theme, multi-vault, portable mode, fuzzy search, drag-and-drop import, auto-update check, WAL checkpoint, tray tooltip, security settings API, registry persistence.
 
