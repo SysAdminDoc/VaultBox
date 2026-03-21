@@ -69,15 +69,33 @@ cd apps/browser && npm run build
 
 ### Key Customizations
 
+- **OfflineApiService** replaces ApiService — blocks all network requests, handles cipher CRUD locally with synthetic responses
+- **OfflineSyncService** replaces DefaultSyncService — sync is a local no-op that marks state as current
+- **NoopEventUploadService** — blocks all telemetry/event upload
 - Removed cloud features: sync, notifications, push, organizations, collections, 2FA management, device management, phishing detection, premium gates
 - Removed all nudge/spotlight/onboarding cards (vault, generator, autofill, account security, admin settings)
 - Removed intro carousel guard — goes straight to login
 - Removed TOTP copy button (TOTP managed by server)
+- Removed WebRequestBackground (import, field, permission, startListening call)
+- Removed phishing detection initialization (PhishingDataService, PhishingDetectionService)
+- Removed orphaned components (download-bitwarden, more-from-bitwarden)
+- Removed premium badges from archive and attachments
 - DuckDuckGo favicons (`icons.duckduckgo.com/ip3/{domain}.ico`) instead of Bitwarden icons server
 - Default session timeout: Never (instead of OnRestart)
 - Default filters collapsed, compact mode enabled, quick-copy mode enabled
 - Rebranded about page → VaultBox + GitHub link
 - Archive accessible without premium
+- Toolbar icons regenerated with reduced padding (lock fills full canvas)
+- Locked/gray icon variants match VaultBox style (desaturated + dimmed)
+
+### Offline Services (`src/platform/offline/`)
+
+| File                              | Purpose                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `offline-api.service.ts`          | Extends ApiService, blocks `send()`, returns synthetic CipherResponse for CRUD |
+| `offline-sync.service.ts`         | Implements SyncService, fullSync is no-op that updates lastSync date           |
+| `offline-event-upload.service.ts` | NoopEventUploadService, discards all telemetry                                 |
+| `offline-account.service.ts`      | Local vault config, vault file export/import helpers                           |
 
 ## Release Assets
 
