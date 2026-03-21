@@ -178,10 +178,13 @@ import { UserAutoUnlockKeyService } from "@bitwarden/common/platform/services/us
 import { PrimarySecondaryStorageService } from "@bitwarden/common/platform/storage/primary-secondary-storage.service";
 import { WindowStorageService } from "@bitwarden/common/platform/storage/window-storage.service";
 import { SyncService } from "@bitwarden/common/platform/sync";
+// eslint-disable-next-line no-restricted-imports -- Needed for service creation
+import { DefaultSyncService } from "@bitwarden/common/platform/sync/internal";
 import { SystemNotificationsService } from "@bitwarden/common/platform/system-notifications/";
 import { SystemNotificationEvent } from "@bitwarden/common/platform/system-notifications/system-notifications.service";
 import { UnsupportedSystemNotificationsService } from "@bitwarden/common/platform/system-notifications/unsupported-system-notifications.service";
 import { DefaultThemeStateService } from "@bitwarden/common/platform/theming/theme-state.service";
+import { ApiService } from "@bitwarden/common/services/api.service";
 import { AuditService } from "@bitwarden/common/services/audit.service";
 import { EventCollectionService } from "@bitwarden/common/services/event/event-collection.service";
 import { KeyServiceLegacyEncryptorProvider } from "@bitwarden/common/tools/cryptography/key-service-legacy-encryptor-provider";
@@ -318,9 +321,7 @@ import { IpcBackgroundService } from "../platform/ipc/ipc-background.service";
 import { IpcContentScriptManagerService } from "../platform/ipc/ipc-content-script-manager.service";
 /* eslint-disable no-restricted-imports */
 import { ChromeMessageSender } from "../platform/messaging/chrome-message.sender";
-import { OfflineApiService } from "../platform/offline/offline-api.service";
 import { NoopEventUploadService } from "../platform/offline/offline-event-upload.service";
-import { OfflineSyncService } from "../platform/offline/offline-sync.service";
 /* eslint-enable no-restricted-imports */
 import { OffscreenDocumentService } from "../platform/offscreen-document/abstractions/offscreen-document";
 import { DefaultOffscreenDocumentService } from "../platform/offscreen-document/offscreen-document.service";
@@ -764,8 +765,8 @@ export default class MainBackground {
       sessionTimeoutTypeService,
     );
 
-    // VaultBox: Offline API service — blocks all network requests, handles CRUD locally
-    this.apiService = new OfflineApiService(
+    // VaultBox: API service pointed at local VaultBox server (127.0.0.1:8787)
+    this.apiService = new ApiService(
       this.tokenService,
       this.platformUtilsService,
       this.environmentService,
@@ -1054,13 +1055,35 @@ export default class MainBackground {
 
     this.providerService = new ProviderService(this.stateProvider);
 
-    // VaultBox: Offline sync service — no server contact, marks local state as current
-    this.syncService = new OfflineSyncService(
+    // VaultBox: Sync service pointed at local VaultBox server (127.0.0.1:8787)
+    this.syncService = new DefaultSyncService(
+      this.masterPasswordService,
       this.accountService,
+      this.apiService,
+      this.domainSettingsService,
+      this.folderService,
+      this.cipherService,
+      this.keyService,
+      this.collectionService,
+      this.messagingService,
+      this.policyService,
+      this.sendService,
+      this.logService,
+      this.keyConnectorService,
+      this.providerService,
+      this.folderApiService,
+      this.organizationService,
+      this.sendApiService,
+      this.userDecryptionOptionsService,
+      this.avatarService,
+      logoutCallback,
+      this.billingAccountProfileStateService,
+      this.tokenService,
       this.authService,
       this.stateProvider,
-      this.logService,
-      this.messagingService,
+      this.securityStateService,
+      this.kdfConfigService,
+      this.accountCryptographicStateService,
     );
 
     this.syncServiceListener = new SyncServiceListener(
