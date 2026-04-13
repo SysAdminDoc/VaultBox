@@ -1,5 +1,7 @@
 # VaultBox - Local Password Manager
 
+![Version](https://img.shields.io/badge/version-v0.8.3-blue) ![Platform](https://img.shields.io/badge/platform-C%2B%2B-lightgrey)
+
 A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's browser extension that stores everything in an encrypted local file on your computer. No cloud servers, no accounts to create online, no telemetry.
 
 ## Download
