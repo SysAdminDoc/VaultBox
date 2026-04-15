@@ -65,3 +65,4 @@ server/cpp/deps/
 # Python
 __pycache__/
 *.pyc
+CLAUDE.md
