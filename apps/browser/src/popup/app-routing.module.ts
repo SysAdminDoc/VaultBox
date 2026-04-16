@@ -264,9 +264,8 @@ const routes: Routes = [
         data: {
           elevation: 1,
           pageIcon: RegistrationUserAddIcon,
-          pageTitle: {
-            key: "createAccount",
-          },
+          pageTitle: "Create Your Local Vault",
+          pageSubtitle: "Choose a master password to unlock VaultBox on this device.",
           showBackButton: true,
         } satisfies RouteDataProperties & ExtensionAnonLayoutWrapperData,
         children: [
@@ -314,7 +313,10 @@ const routes: Routes = [
         data: {
           pageIcon: VaultIcon,
           pageTitle: {
-            key: "logInToBitwarden",
+            key: "welcomeBack",
+          },
+          pageSubtitle: {
+            key: "loginOrCreateNewAccount",
           },
           elevation: 1,
           showAcctSwitcher: false,
@@ -328,12 +330,9 @@ const routes: Routes = [
         path: AuthRoute.PasswordHint,
         canActivate: [unauthGuardFn(unauthRouteOverrides)],
         data: {
-          pageTitle: {
-            key: "requestPasswordHint",
-          },
-          pageSubtitle: {
-            key: "enterYourAccountEmailAddressAndYourPasswordHintWillBeSentToYou",
-          },
+          pageTitle: "Master Password Help",
+          pageSubtitle:
+            "This offline VaultBox build keeps password reminders on devices you already trust.",
           pageIcon: UserLockIcon,
           showBackButton: true,
           elevation: 1,

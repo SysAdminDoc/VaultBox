@@ -1,4 +1,12 @@
-<!-- VaultBox: Redirecting to password setup (ngOnInit handles the redirect) -->
-<div class="tw-flex tw-items-center tw-justify-center">
-  <p class="tw-text-center tw-text-main">{{ "loading" | i18n }}...</p>
-</div>
+<section
+  class="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-5 tw-text-center tw-shadow-sm"
+  aria-live="polite"
+>
+  <bit-icon name="bwi-spinner" class="bwi-spin bwi-3x" [ariaLabel]="'loading' | i18n"></bit-icon>
+  <div class="tw-space-y-1">
+    <h2 bitTypography="h6" class="!tw-mb-0">Preparing Your Local Vault…</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      VaultBox is opening password setup next so you can start with a master password right away.
+    </p>
+  </div>
+</section>

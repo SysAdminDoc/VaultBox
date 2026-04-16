@@ -1,64 +1,98 @@
 <ng-container *ngIf="loading">
-  <div class="tw-flex tw-items-center tw-justify-center">
+  <section
+    class="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-5 tw-text-center"
+    aria-live="polite"
+  >
     <bit-icon name="bwi-spinner" class="bwi-spin bwi-3x" [ariaLabel]="'loading' | i18n"></bit-icon>
-  </div>
+    <div class="tw-space-y-1">
+      <h2 bitTypography="h6" class="!tw-mb-0">Preparing verification…</h2>
+      <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+        Loading the sign-in methods available for this session.
+      </p>
+    </div>
+  </section>
 </ng-container>
 
 <ng-container *ngIf="!loading">
   <form
     [bitSubmit]="submit"
     [formGroup]="form"
+    class="tw-space-y-5"
     autocomplete="off"
     (keydown.enter)="handleEnterKeyPress()"
   >
-    <app-two-factor-auth-email
-      [tokenFormControl]="tokenFormControl"
-      (tokenChange)="saveFormDataWithPartialData($event)"
-      *ngIf="selectedProviderType === providerType.Email"
-    />
+    <section
+      class="tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+    >
+      <h2 bitTypography="h6" class="!tw-mb-1">Finish This Sign-In</h2>
+      <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+        Use the verification method you trust on this device. You can switch methods or fall back to
+        a recovery code whenever the current route is unavailable.
+      </p>
+    </section>
 
-    <app-two-factor-auth-authenticator
-      [tokenFormControl]="tokenFormControl"
-      (tokenChange)="saveFormDataWithPartialData($event)"
-      *ngIf="selectedProviderType === providerType.Authenticator"
-    />
-    <app-two-factor-auth-yubikey
-      [tokenFormControl]="tokenFormControl"
-      *ngIf="selectedProviderType === providerType.Yubikey"
-    />
+    <section
+      class="tw-space-y-4 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4"
+    >
+      <app-two-factor-auth-email
+        [tokenFormControl]="tokenFormControl"
+        (tokenChange)="saveFormDataWithPartialData($event)"
+        *ngIf="selectedProviderType === providerType.Email"
+      />
 
-    <app-two-factor-auth-duo
-      (tokenEmitter)="submit($event)"
-      [providerData]="selectedProviderData"
-      *ngIf="
-        selectedProviderType === providerType.OrganizationDuo ||
-        selectedProviderType === providerType.Duo
-      "
-      #duoComponent
-    />
-    <bit-form-control *ngIf="!hideRememberMe()">
-      <bit-label>{{ "dontAskAgainOnThisDeviceFor30Days" | i18n }}</bit-label>
-      <input type="checkbox" bitCheckbox formControlName="remember" (change)="onRememberChange()" />
-    </bit-form-control>
+      <app-two-factor-auth-authenticator
+        [tokenFormControl]="tokenFormControl"
+        (tokenChange)="saveFormDataWithPartialData($event)"
+        *ngIf="selectedProviderType === providerType.Authenticator"
+      />
+      <app-two-factor-auth-yubikey
+        [tokenFormControl]="tokenFormControl"
+        *ngIf="selectedProviderType === providerType.Yubikey"
+      />
 
-    <app-two-factor-auth-webauthn
-      (webAuthnResultEmitter)="submit($event.token, $event.remember)"
-      (webAuthnInNewTabEmitter)="webAuthInNewTab = $event"
-      *ngIf="selectedProviderType === providerType.WebAuthn"
-    />
+      <app-two-factor-auth-duo
+        (tokenEmitter)="submit($event)"
+        [providerData]="selectedProviderData"
+        *ngIf="
+          selectedProviderType === providerType.OrganizationDuo ||
+          selectedProviderType === providerType.Duo
+        "
+        #duoComponent
+      />
+      <bit-form-control *ngIf="!hideRememberMe()">
+        <bit-label>{{ "dontAskAgainOnThisDeviceFor30Days" | i18n }}</bit-label>
+        <input
+          type="checkbox"
+          bitCheckbox
+          formControlName="remember"
+          (change)="onRememberChange()"
+        />
+      </bit-form-control>
 
-    <ng-container *ngIf="selectedProviderType == null">
-      <p bitTypography="body1">{{ "noTwoStepProviders" | i18n }}</p>
-      <p bitTypography="body1">{{ "noTwoStepProviders2" | i18n }}</p>
-    </ng-container>
+      <app-two-factor-auth-webauthn
+        (webAuthnResultEmitter)="submit($event.token, $event.remember)"
+        (webAuthnInNewTabEmitter)="webAuthInNewTab = $event"
+        *ngIf="selectedProviderType === providerType.WebAuthn"
+      />
 
-    <!-- Buttons -->
-    <div class="tw-flex tw-flex-col tw-space-y-3">
+      <ng-container *ngIf="selectedProviderType == null">
+        <div class="tw-rounded-xl tw-border tw-border-dashed tw-border-secondary-300 tw-p-4">
+          <p bitTypography="body1" class="!tw-mb-1">No verification methods are ready yet.</p>
+          <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+            Try a recovery code or switch back to a device where another method is already
+            available.
+          </p>
+        </div>
+      </ng-container>
+    </section>
+
+    <section class="tw-flex tw-flex-col tw-space-y-3">
       <button
         type="submit"
         buttonType="primary"
         bitButton
         bitFormButton
+        [block]="true"
         #continueButton
         *ngIf="showContinueButton()"
       >
@@ -69,6 +103,7 @@
         type="button"
         buttonType="primary"
         bitButton
+        [block]="true"
         (click)="launchDuo()"
         *ngIf="
           selectedProviderType === providerType.Duo ||
@@ -83,17 +118,22 @@
         >
       </button>
 
-      <p class="tw-text-center tw-mb-0">{{ "or" | i18n }}</p>
+      <div class="tw-flex tw-items-center tw-gap-3 tw-text-muted">
+        <span class="tw-h-px tw-flex-1 tw-bg-secondary-300"></span>
+        <span bitTypography="body2" class="tw-whitespace-nowrap">Need another route?</span>
+        <span class="tw-h-px tw-flex-1 tw-bg-secondary-300"></span>
+      </div>
 
       <button
         type="button"
         buttonType="secondary"
         bitButton
         bitFormButton
+        [block]="true"
         *ngIf="twoFactorProviders?.size > 1"
         (click)="selectOtherTwoFactorMethod()"
       >
-        <span> {{ "selectAnotherMethod" | i18n }} </span>
+        <span> Try Another Verification Method </span>
       </button>
 
       <button
@@ -101,10 +141,11 @@
         buttonType="secondary"
         bitButton
         bitFormButton
+        [block]="true"
         (click)="use2faRecoveryCode()"
       >
-        <span> {{ "useYourRecoveryCode" | i18n }} </span>
+        <span> Use a Recovery Code </span>
       </button>
-    </div>
+    </section>
   </form>
 </ng-container>

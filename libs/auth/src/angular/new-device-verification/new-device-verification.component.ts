@@ -21,6 +21,8 @@ import {
   FormFieldModule,
   IconButtonModule,
   LinkModule,
+  ToastService,
+  TypographyModule,
 } from "@bitwarden/components";
 
 import { LoginStrategyServiceAbstraction } from "../../common/abstractions/login-strategy.service";
@@ -44,6 +46,7 @@ import { NewDeviceVerificationComponentService } from "./new-device-verification
     FormFieldModule,
     IconButtonModule,
     LinkModule,
+    TypographyModule,
   ],
 })
 export class NewDeviceVerificationComponent implements OnInit, OnDestroy {
@@ -74,6 +77,7 @@ export class NewDeviceVerificationComponent implements OnInit, OnDestroy {
     private masterPasswordService: MasterPasswordServiceAbstraction,
     private newDeviceVerificationComponentService: NewDeviceVerificationComponentService,
     private location: Location,
+    private toastService: ToastService,
   ) {}
 
   async ngOnInit() {
@@ -126,8 +130,18 @@ export class NewDeviceVerificationComponent implements OnInit, OnDestroy {
         false,
         false,
       );
+      this.toastService.showToast({
+        variant: "success",
+        title: "",
+        message: "A new verification code is on the way.",
+      });
     } catch (e) {
       this.logService.error(e);
+      this.toastService.showToast({
+        variant: "error",
+        title: this.i18nService.t("errorOccurred"),
+        message: "We could not send another code. Try again in a moment.",
+      });
     } finally {
       this.disableRequestOTP = false;
     }

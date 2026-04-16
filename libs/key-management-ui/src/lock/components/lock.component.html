@@ -5,6 +5,15 @@
 </ng-template>
 
 <ng-container *ngIf="unlockOptions && !loading; else spinner">
+  <section
+    class="tw-mb-4 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+  >
+    <h2 bitTypography="h6" class="!tw-mb-1">{{ "unlockVault" | i18n }}</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      {{ "unlockVaultDesc" | i18n }}
+    </p>
+  </section>
+
   <!-- Biometrics Unlock -->
   <ng-container *ngIf="activeUnlockOption === UnlockOption.Biometrics">
     <button
@@ -23,7 +32,11 @@
     </button>
 
     <div class="tw-flex tw-flex-col tw-space-y-3">
-      <p class="tw-text-center tw-mb-0">{{ "or" | i18n }}</p>
+      <p
+        class="tw-mb-0 tw-text-center tw-text-xs tw-font-medium tw-uppercase tw-tracking-[0.18em] tw-text-muted"
+      >
+        {{ "or" | i18n }}
+      </p>
 
       <ng-container *ngIf="unlockOptions.pin.enabled">
         <button
@@ -86,7 +99,11 @@
           {{ "unlock" | i18n }}
         </button>
 
-        <p class="tw-text-center">{{ "or" | i18n }}</p>
+        <p
+          class="tw-mb-0 tw-text-center tw-text-xs tw-font-medium tw-uppercase tw-tracking-[0.18em] tw-text-muted"
+        >
+          {{ "or" | i18n }}
+        </p>
 
         <ng-container *ngIf="showBiometrics">
           <button

@@ -50,35 +50,31 @@ $mfaTypes: 0, 2, 3, 4, 6;
 }
 
 // VaultBox: Condense vertical spacing for popup extension
-// Reduce excessive top padding on auth/landing content area
+// Rebalance popup spacing so the extension feels calm instead of cramped.
 bit-landing-content > div {
-  padding-top: 1rem !important;
-  padding-bottom: 0.5rem !important;
+  padding-top: 1.5rem !important;
+  padding-bottom: 1rem !important;
 }
 
-// Tighter card spacing
 bit-landing-card > div {
+  margin-bottom: 1rem !important;
+}
+
+bit-landing-hero > div {
+  margin-bottom: 0.875rem !important;
+}
+
+bit-landing-footer > footer {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+
+bit-form-field {
   margin-bottom: 0.75rem !important;
 }
 
-// Reduce hero section spacing
-bit-landing-hero > div {
-  margin-bottom: 0.5rem !important;
-}
-
-// Tighter footer
-bit-landing-footer > footer {
-  padding-top: 0.5rem !important;
-  padding-bottom: 0.5rem !important;
-}
-
-// Reduce form field vertical gaps
-bit-form-field {
-  margin-bottom: 0.5rem !important;
-}
-
-// Tighter gap between sections inside popup page scroll area
+// Restore a little breathing room between stacked popup sections.
 popup-page main > div[data-testid="popup-layout-scroll-region"] {
-  padding-top: 0.375rem !important;
-  padding-bottom: 0.375rem !important;
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
 }

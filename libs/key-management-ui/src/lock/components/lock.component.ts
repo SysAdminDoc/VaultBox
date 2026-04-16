@@ -45,6 +45,7 @@ import {
   FormFieldModule,
   IconButtonModule,
   ToastService,
+  TypographyModule,
 } from "@bitwarden/components";
 import {
   KeyService,
@@ -105,6 +106,7 @@ const BIOMETRIC_UNLOCK_TEMPORARY_UNAVAILABLE_STATUSES = [
     UnlockViaPrfComponent,
     MasterPasswordLockComponent,
     TooltipDirective,
+    TypographyModule,
   ],
 })
 export class LockComponent implements OnInit, OnDestroy {

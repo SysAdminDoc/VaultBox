@@ -5,20 +5,42 @@
     </ng-container>
   </popup-header>
 
-  <!-- VaultBox: Removed account security nudge spotlight -->
   @if (loading()) {
-    <div class="tw-h-full tw-place-content-center"><bit-spinner></bit-spinner></div>
+    <div
+      class="tw-flex tw-h-full tw-flex-col tw-items-center tw-justify-center tw-gap-3 tw-text-center"
+    >
+      <bit-spinner></bit-spinner>
+      <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+        Loading unlock methods and session controls.
+      </p>
+    </div>
   } @else {
-    <div [formGroup]="form">
+    <section
+      class="tw-mb-4 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+    >
+      <h2 bitTypography="h4" class="!tw-mb-1">Unlock and session protection</h2>
+      <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+        Decide how quickly VaultBox can reopen on this device and when it should ask for stronger
+        proof.
+      </p>
+    </section>
+
+    <div [formGroup]="form" class="tw-space-y-4">
       <bit-section>
-        <bit-section-header>
-          <h2 bitTypography="h6">{{ "unlockMethods" | i18n }}</h2>
-        </bit-section-header>
+        <div class="tw-mb-2">
+          <h2 bitTypography="h6" class="!tw-mb-1">{{ "unlockMethods" | i18n }}</h2>
+          <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+            Keep access quick without making the extension easier to open for the wrong person.
+          </p>
+        </div>
         <bit-card>
           <bit-form-control [disableMargin]="!((pinEnabled$ | async) || this.form.value.pin)">
             <input bitCheckbox id="biometric" type="checkbox" formControlName="biometric" />
             <bit-label for="biometric" class="tw-whitespace-normal">
-              {{ "unlockWithBiometrics" | i18n }}
+              <span>{{ "unlockWithBiometrics" | i18n }}</span>
+              <span class="tw-mt-0.5 tw-block tw-text-sm tw-font-normal tw-text-muted">
+                Use the biometric check already available on this device when VaultBox can trust it.
+              </span>
             </bit-label>
             <bit-hint *ngIf="biometricUnavailabilityReason">
               {{ biometricUnavailabilityReason }}
@@ -36,7 +58,10 @@
               formControlName="enableAutoBiometricsPrompt"
             />
             <bit-label for="autoBiometricsPrompt" class="tw-whitespace-normal">
-              {{ "enableAutoBiometricsPrompt" | i18n }}
+              <span>{{ "enableAutoBiometricsPrompt" | i18n }}</span>
+              <span class="tw-mt-0.5 tw-block tw-text-sm tw-font-normal tw-text-muted">
+                Ask for biometrics automatically when VaultBox can use them to reopen the vault.
+              </span>
             </bit-label>
           </bit-form-control>
           <bit-form-control
@@ -44,9 +69,13 @@
             *ngIf="(pinEnabled$ | async) || this.form.value.pin"
           >
             <input bitCheckbox id="pin" type="checkbox" formControlName="pin" />
-            <bit-label for="pin" class="tw-whitespace-normal">{{
-              "unlockWithPin" | i18n
-            }}</bit-label>
+            <bit-label for="pin" class="tw-whitespace-normal">
+              <span>{{ "unlockWithPin" | i18n }}</span>
+              <span class="tw-mt-0.5 tw-block tw-text-sm tw-font-normal tw-text-muted">
+                Add a fast local unlock option when you do not want to type your full password every
+                time.
+              </span>
+            </bit-label>
           </bit-form-control>
           <bit-form-control
             class="tw-pl-5"
@@ -60,35 +89,86 @@
               formControlName="pinLockWithMasterPassword"
             />
             <bit-label for="pinEphemeral" class="tw-whitespace-normal">
-              {{ "lockWithMasterPassOnRestart1" | i18n }}
+              <span>{{ "lockWithMasterPassOnRestart1" | i18n }}</span>
+              <span class="tw-mt-0.5 tw-block tw-text-sm tw-font-normal tw-text-muted">
+                Require your full master password again after the browser or app restarts.
+              </span>
             </bit-label>
           </bit-form-control>
         </bit-card>
       </bit-section>
 
       <bit-section>
-        <bit-section-header>
-          <h2 bitTypography="h6">
+        <div class="tw-mb-2">
+          <h2 bitTypography="h6" class="!tw-mb-1">
             {{ "sessionTimeoutHeader" | i18n }}
           </h2>
-        </bit-section-header>
+          <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+            Choose when an idle extension should lock itself again and what action that lock should
+            take.
+          </p>
+        </div>
 
         <bit-card>
           <bit-session-timeout-settings [refreshTimeoutActionSettings]="refreshTimeoutSettings$" />
         </bit-card>
       </bit-section>
 
-      <!-- VaultBox: Removed device management, phishing detection, 2-step login (cloud features) -->
+      <bit-section *ngIf="phishingDetectionAvailable$ | async">
+        <div class="tw-mb-2">
+          <h2 bitTypography="h6" class="!tw-mb-1">{{ "phishingBlocker" | i18n }}</h2>
+          <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+            Show a warning before you continue to a site that looks like a known phishing
+            destination.
+          </p>
+        </div>
+
+        <bit-card>
+          <bit-form-control id="phishingDetectionAction" disableMargin>
+            <input
+              bitCheckbox
+              id="enablePhishingDetection"
+              type="checkbox"
+              formControlName="enablePhishingDetection"
+            />
+            <bit-label for="enablePhishingDetection" class="tw-whitespace-normal">
+              <span>{{ "enablePhishingDetection" | i18n }}</span>
+              <span class="tw-mt-0.5 tw-block tw-text-sm tw-font-normal tw-text-muted">
+                {{ "enablePhishingDetectionDesc" | i18n }}
+              </span>
+            </bit-label>
+          </bit-form-control>
+        </bit-card>
+      </bit-section>
+
+      <!-- VaultBox: Removed device management and 2-step login cloud flows -->
 
       <bit-section disableMargin>
-        <bit-section-header>
-          <h2 bitTypography="h6">{{ "otherOptions" | i18n }}</h2>
-        </bit-section-header>
-        <bit-item>
-          <button bit-item-content type="button" appStopClick (click)="openAcctFingerprintDialog()">
-            {{ "fingerprintPhrase" | i18n }}
-          </button>
-        </bit-item>
+        <div class="tw-mb-2">
+          <h2 bitTypography="h6" class="!tw-mb-1">{{ "otherOptions" | i18n }}</h2>
+          <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+            Use the account fingerprint phrase to confirm this browser is connected to the right
+            vault.
+          </p>
+        </div>
+        <bit-item-group>
+          <bit-item>
+            <button
+              bit-item-content
+              type="button"
+              appStopClick
+              (click)="openAcctFingerprintDialog()"
+            >
+              <i slot="start" class="bwi bwi-fingerprint" aria-hidden="true"></i>
+              <span>{{ "fingerprintPhrase" | i18n }}</span>
+              <div slot="secondary" class="tw-text-sm">
+                Compare this phrase with another trusted VaultBox session before sharing or
+                approving access.
+              </div>
+              <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+            </button>
+          </bit-item>
+        </bit-item-group>
       </bit-section>
     </div>
   }

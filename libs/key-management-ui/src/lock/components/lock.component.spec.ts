@@ -367,6 +367,30 @@ describe("LockComponent", () => {
     });
   });
 
+  describe("rendering", () => {
+    it("shows unlock orientation copy above the browser unlock methods", () => {
+      fixture.detectChanges();
+
+      component.loading = false;
+      component.unlockOptions = {
+        masterPassword: { enabled: true },
+        pin: { enabled: true },
+        biometrics: {
+          enabled: true,
+          biometricsStatus: BiometricsStatus.Available,
+        },
+        prf: { enabled: false },
+      };
+      component.activeUnlockOption = UnlockOption.Biometrics;
+
+      fixture.detectChanges();
+
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain("unlockVault");
+      expect(text).toContain("unlockVaultDesc");
+    });
+  });
+
   describe("setDefaultActiveUnlockOption", () => {
     it.each([
       [

@@ -3,7 +3,12 @@ import { Component } from "@angular/core";
 import { RouterModule } from "@angular/router";
 
 import { JslibModule } from "@bitwarden/angular/jslib.module";
-import { CenterPositionStrategy, DialogService, ItemModule } from "@bitwarden/components";
+import {
+  CenterPositionStrategy,
+  DialogService,
+  ItemModule,
+  TypographyModule,
+} from "@bitwarden/components";
 
 import { BrowserApi } from "../../../../platform/browser/browser-api";
 import { PopOutComponent } from "../../../../platform/popup/components/pop-out.component";
@@ -23,6 +28,7 @@ import { AboutDialogComponent } from "../about-dialog/about-dialog.component";
     PopupHeaderComponent,
     PopOutComponent,
     ItemModule,
+    TypographyModule,
   ],
 })
 export class AboutPageV2Component {

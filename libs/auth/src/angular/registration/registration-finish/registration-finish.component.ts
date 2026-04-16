@@ -17,7 +17,12 @@ import { LogService } from "@bitwarden/common/platform/abstractions/log.service"
 import { ValidationService } from "@bitwarden/common/platform/abstractions/validation.service";
 // This import has been flagged as unallowed for this class. It may be involved in a circular dependency loop.
 // eslint-disable-next-line no-restricted-imports
-import { AnonLayoutWrapperDataService, ToastService, IconModule } from "@bitwarden/components";
+import {
+  AnonLayoutWrapperDataService,
+  ToastService,
+  IconModule,
+  TypographyModule,
+} from "@bitwarden/components";
 
 import {
   LoginStrategyServiceAbstraction,
@@ -43,7 +48,14 @@ type MarketingInitiative = (typeof MarketingInitiative)[keyof typeof MarketingIn
 @Component({
   selector: "auth-registration-finish",
   templateUrl: "./registration-finish.component.html",
-  imports: [CommonModule, JslibModule, RouterModule, InputPasswordComponent, IconModule],
+  imports: [
+    CommonModule,
+    JslibModule,
+    RouterModule,
+    InputPasswordComponent,
+    IconModule,
+    TypographyModule,
+  ],
 })
 export class RegistrationFinishComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
@@ -109,12 +121,8 @@ export class RegistrationFinishComponent implements OnInit, OnDestroy {
 
     // Set page title for vault creation
     this.anonLayoutWrapperDataService.setAnonLayoutWrapperData({
-      pageTitle: {
-        key: "setAStrongPassword",
-      },
-      pageSubtitle: {
-        key: "finishCreatingYourAccountBySettingAPassword",
-      },
+      pageTitle: "Create Your Local Vault",
+      pageSubtitle: "Choose a master password you will use to unlock VaultBox on this device.",
     });
 
     this.loading = false;
@@ -236,12 +244,8 @@ export class RegistrationFinishComponent implements OnInit, OnDestroy {
 
   private setDefaultPageTitleAndSubtitle() {
     this.anonLayoutWrapperDataService.setAnonLayoutWrapperData({
-      pageTitle: {
-        key: "setAStrongPassword",
-      },
-      pageSubtitle: {
-        key: "finishCreatingYourAccountBySettingAPassword",
-      },
+      pageTitle: "Create Your Local Vault",
+      pageSubtitle: "Choose a master password you will use to unlock VaultBox on this device.",
     });
   }
 

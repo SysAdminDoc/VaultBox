@@ -5,41 +5,104 @@
     </ng-container>
   </popup-header>
 
-  <bit-item-group>
-    <bit-item>
-      <a bit-item-content routerLink="/folders">
-        {{ "folders" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <bit-item>
-      <button type="button" bit-item-content (click)="import()" [title]="'popOutNewWindow' | i18n">
-        {{ "importNoun" | i18n }}
-        <ng-container slot="end">
-          <span class="tw-sr-only">{{ "popOutNewWindow" | i18n }}</span>
-          <i class="bwi bwi-popout tw-text-muted" aria-hidden="true"></i>
-        </ng-container>
-      </button>
-    </bit-item>
-    <bit-item>
-      <a bit-item-content routerLink="/export">
-        {{ "exportNoun" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <!-- VaultBox: Archive available without premium -->
-    <bit-item>
-      <a data-test-id="archive-link" bit-item-content routerLink="/archive">
-        {{ "archiveNoun" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <bit-item>
-      <a bit-item-content routerLink="/trash">
-        {{ "trash" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <!-- VaultBox: Sync Now removed (offline vault) -->
-  </bit-item-group>
+  <section
+    class="tw-mb-4 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+  >
+    <div class="tw-flex tw-items-start tw-justify-between tw-gap-3">
+      <div>
+        <h2 bitTypography="h4" class="!tw-mb-1">Vault maintenance</h2>
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+          Organize your local vault, move data in or out, and keep older items easy to review.
+        </p>
+      </div>
+      <div class="tw-text-right tw-shrink-0">
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">Last sync</p>
+        <p bitTypography="body2" class="tw-mb-0">{{ lastSync }}</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="tw-space-y-4">
+    <section>
+      <div class="tw-mb-2">
+        <h2 bitTypography="h6" class="!tw-mb-1">Organize</h2>
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+          Keep your structure tidy so finding and reviewing items stays quick.
+        </p>
+      </div>
+
+      <bit-item-group>
+        <bit-item>
+          <a bit-item-content routerLink="/folders">
+            <span>{{ "folders" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Create and rename folder groups for a cleaner vault.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+        <bit-item *ngIf="showArchiveItem()">
+          <a data-test-id="archive-link" bit-item-content routerLink="/archive">
+            <span>{{ "archiveNoun" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Move older items out of the main list without deleting them.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+        <bit-item>
+          <a bit-item-content routerLink="/trash">
+            <span>{{ "trash" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Review recently deleted items before they are gone for good.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+      </bit-item-group>
+    </section>
+
+    <section>
+      <div class="tw-mb-2">
+        <h2 bitTypography="h6" class="!tw-mb-1">Move data</h2>
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+          Bring a vault onto this device or create a backup you can keep offline.
+        </p>
+      </div>
+
+      <bit-item-group>
+        <bit-item>
+          <button
+            type="button"
+            bit-item-content
+            (click)="import()"
+            [title]="'popOutNewWindow' | i18n"
+          >
+            <div class="tw-flex tw-items-center tw-gap-2">
+              <span>{{ "importNoun" | i18n }}</span>
+              <span *ngIf="emptyVaultImportBadge$ | async" bitBadge variant="primary"
+                >Start here</span
+              >
+            </div>
+            <div slot="secondary" class="tw-text-sm">
+              Bring an existing backup or migration file into VaultBox.
+            </div>
+            <ng-container slot="end">
+              <span class="tw-sr-only">{{ "popOutNewWindow" | i18n }}</span>
+              <i class="bwi bwi-popout tw-text-muted" aria-hidden="true"></i>
+            </ng-container>
+          </button>
+        </bit-item>
+        <bit-item>
+          <a bit-item-content routerLink="/export">
+            <span>{{ "exportNoun" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Create an offline copy of your vault for backup or transfer.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+      </bit-item-group>
+    </section>
+  </div>
 </popup-page>

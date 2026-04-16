@@ -1,4 +1,14 @@
-<form [formGroup]="formGroup" [bitSubmit]="submit">
+<form [formGroup]="formGroup" [bitSubmit]="submit" class="tw-space-y-5">
+  <section
+    class="tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+  >
+    <h2 bitTypography="h6" class="!tw-mb-1">Confirm This Device</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      Enter the latest verification code from your sign-in message to finish this session. If a new
+      code arrives, use the newest one.
+    </p>
+  </section>
+
   <bit-form-field class="!tw-mb-1">
     <bit-label>{{ "verificationCode" | i18n }}</bit-label>
     <input
@@ -8,21 +18,29 @@
       name="verificationCode"
       formControlName="code"
       appInputVerbatim
+      autocomplete="one-time-code"
+      inputmode="numeric"
+      spellcheck="false"
     />
   </bit-form-field>
 
-  <button
-    bitLink
-    type="button"
-    linkType="primary"
-    (click)="resendOTP()"
-    [disabled]="disableRequestOTP"
-    class="tw-text-sm"
-  >
-    {{ "resendCode" | i18n }}
-  </button>
+  <div class="tw-flex tw-flex-wrap tw-items-center tw-justify-between tw-gap-3">
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      Need a fresh code? Send another one to the same sign-in channel.
+    </p>
+    <button
+      bitLink
+      type="button"
+      linkType="primary"
+      (click)="resendOTP()"
+      [disabled]="disableRequestOTP"
+      class="tw-text-sm"
+    >
+      {{ "resendCode" | i18n }}
+    </button>
+  </div>
 
-  <div class="tw-grid tw-gap-3 tw-mt-4">
+  <div class="tw-grid tw-gap-3">
     <button
       bitButton
       bitFormButton
@@ -35,7 +53,11 @@
     </button>
 
     @if (showBackButton) {
-      <div class="tw-text-center">{{ "or" | i18n }}</div>
+      <div class="tw-flex tw-items-center tw-gap-3 tw-text-muted">
+        <span class="tw-h-px tw-flex-1 tw-bg-secondary-300"></span>
+        <span bitTypography="body2" class="tw-whitespace-nowrap">Need another step?</span>
+        <span class="tw-h-px tw-flex-1 tw-bg-secondary-300"></span>
+      </div>
 
       <button type="button" bitButton block buttonType="secondary" (click)="goBack()">
         {{ "back" | i18n }}

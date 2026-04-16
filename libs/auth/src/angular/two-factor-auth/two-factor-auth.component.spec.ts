@@ -1,9 +1,11 @@
 import { Component } from "@angular/core";
 import { ComponentFixture, TestBed } from "@angular/core/testing";
+import { By } from "@angular/platform-browser";
 import { ActivatedRoute, Router, convertToParamMap } from "@angular/router";
 import { mock, MockProxy } from "jest-mock-extended";
 import { BehaviorSubject, of } from "rxjs";
 
+import { ViewCacheService } from "@bitwarden/angular/platform/view-cache";
 import { WINDOW } from "@bitwarden/angular/services/injection-tokens";
 import {
   LoginStrategyServiceAbstraction,
@@ -20,6 +22,7 @@ import { AuthService } from "@bitwarden/common/auth/abstractions/auth.service";
 import { SsoLoginServiceAbstraction } from "@bitwarden/common/auth/abstractions/sso-login.service.abstraction";
 import { AuthenticationStatus } from "@bitwarden/common/auth/enums/authentication-status";
 import { AuthenticationType } from "@bitwarden/common/auth/enums/authentication-type";
+import { TwoFactorProviderType } from "@bitwarden/common/auth/enums/two-factor-provider-type";
 import { AuthResult } from "@bitwarden/common/auth/models/domain/auth-result";
 import { ForceSetPasswordReason } from "@bitwarden/common/auth/models/domain/force-set-password-reason";
 import { TokenTwoFactorRequest } from "@bitwarden/common/auth/models/request/identity-token/token-two-factor.request";
@@ -121,6 +124,14 @@ describe("TwoFactorAuthComponent", () => {
     mockConfigService = mock<ConfigService>();
     mockKeyConnnectorService = mock<KeyConnectorService>();
     mockKeyConnnectorService.requiresDomainConfirmation$.mockReturnValue(of(null));
+    mockLoginStrategyService.authenticationSessionTimeout$ = of(false);
+    mockPlatformUtilsService.supportsWebAuthn.mockReturnValue(false);
+    mockTwoFactorService.getDefaultProvider.mockResolvedValue(TwoFactorProviderType.Authenticator);
+    mockTwoFactorService.getProviders.mockResolvedValue(
+      new Map([[TwoFactorProviderType.Authenticator, {} as { [key: string]: string }]]),
+    );
+    mockTwoFactorAuthCompService.shouldCheckForWebAuthnQueryParamResponse.mockReturnValue(false);
+    mockTwoFactorAuthCompService.determineDuoLaunchAction.mockReturnValue(undefined);
 
     mockEnvService = mock<EnvironmentService>();
     mockLoginSuccessHandlerService = mock<LoginSuccessHandlerService>();
@@ -433,5 +444,98 @@ describe("TwoFactorAuthComponent", () => {
         expect(mockRouter.navigate).toHaveBeenCalledWith(["confirm-key-connector-domain"]);
       });
     });
+  });
+});
+
+describe("TwoFactorAuthComponent rendering", () => {
+  it("renders the refined verification guidance and one-time-code autofill hints", async () => {
+    const mockLoginStrategyService = mock<LoginStrategyServiceAbstraction>();
+    mockLoginStrategyService.authenticationSessionTimeout$ = of(false);
+
+    const viewCacheService = {
+      signal: () => {
+        let value = null;
+        const signal = (() => value) as any;
+        signal.set = (nextValue: unknown) => {
+          value = nextValue;
+        };
+        return signal;
+      },
+    };
+
+    const mockPlatformUtilsService = mock<PlatformUtilsService>();
+    mockPlatformUtilsService.supportsWebAuthn.mockReturnValue(false);
+
+    const mockTwoFactorService = mock<TwoFactorService>();
+    mockTwoFactorService.getDefaultProvider.mockResolvedValue(TwoFactorProviderType.Authenticator);
+    mockTwoFactorService.getProviders.mockResolvedValue(
+      new Map([[TwoFactorProviderType.Authenticator, {} as { [key: string]: string }]]),
+    );
+
+    const mockTwoFactorAuthCompService = mock<TwoFactorAuthComponentService>();
+    mockTwoFactorAuthCompService.shouldCheckForWebAuthnQueryParamResponse.mockReturnValue(false);
+    mockTwoFactorAuthCompService.determineDuoLaunchAction.mockReturnValue(undefined);
+
+    await TestBed.configureTestingModule({
+      imports: [TwoFactorAuthComponent],
+      providers: [
+        { provide: ViewCacheService, useValue: viewCacheService },
+        { provide: LoginStrategyServiceAbstraction, useValue: mockLoginStrategyService },
+        { provide: Router, useValue: { events: of(), url: "/2fa" } },
+        { provide: I18nService, useValue: { t: (key: string) => key } },
+        { provide: PlatformUtilsService, useValue: mockPlatformUtilsService },
+        { provide: DialogService, useValue: mock<DialogService>() },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              queryParamMap: convertToParamMap({ sso: "false" }),
+              paramMap: convertToParamMap({}),
+              queryParams: {},
+            },
+          },
+        },
+        { provide: LogService, useValue: { error: jest.fn(), info: jest.fn() } },
+        { provide: TwoFactorService, useValue: mockTwoFactorService },
+        {
+          provide: UserDecryptionOptionsServiceAbstraction,
+          useValue: mock<UserDecryptionOptionsServiceAbstraction>(),
+        },
+        { provide: SsoLoginServiceAbstraction, useValue: mock<SsoLoginServiceAbstraction>() },
+        {
+          provide: InternalMasterPasswordServiceAbstraction,
+          useValue: mock<InternalMasterPasswordServiceAbstraction>(),
+        },
+        { provide: AccountService, useValue: mockAccountServiceWith("userId" as UserId) },
+        { provide: WINDOW, useValue: mock<Window>() },
+        { provide: ToastService, useValue: { showToast: jest.fn() } },
+        { provide: TwoFactorAuthComponentService, useValue: mockTwoFactorAuthCompService },
+        {
+          provide: AnonLayoutWrapperDataService,
+          useValue: { setAnonLayoutWrapperData: jest.fn() },
+        },
+        { provide: EnvironmentService, useValue: mock<EnvironmentService>() },
+        { provide: LoginSuccessHandlerService, useValue: { run: jest.fn() } },
+        {
+          provide: AuthService,
+          useValue: {
+            getAuthStatus: () => of(AuthenticationStatus.Unlocked),
+          },
+        },
+        { provide: KeyConnectorService, useValue: mock<KeyConnectorService>() },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(TwoFactorAuthComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain("Finish This Sign-In");
+    expect(fixture.nativeElement.textContent).toContain("Use a Recovery Code");
+
+    const input = fixture.debugElement.query(By.css('input[autocomplete="one-time-code"]'))
+      .nativeElement as HTMLInputElement;
+    expect(input.name).toBe("verificationCode");
   });
 });

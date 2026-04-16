@@ -24,6 +24,7 @@ import {
   FormFieldModule,
   Option,
   SelectModule,
+  TypographyModule,
 } from "@bitwarden/components";
 import { PermitCipherDetailsPopoverComponent } from "@bitwarden/vault";
 
@@ -51,6 +52,7 @@ import { VaultPopupCopyButtonsService } from "../services/vault-popup-copy-butto
     ReactiveFormsModule,
     CheckboxModule,
     BadgeModule,
+    TypographyModule,
     PermitCipherDetailsPopoverComponent,
   ],
 })

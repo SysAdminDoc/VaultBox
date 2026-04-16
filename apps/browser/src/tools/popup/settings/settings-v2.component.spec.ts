@@ -142,4 +142,22 @@ describe("SettingsV2Component", () => {
 
     expect(mockNudges.dismissNudge).not.toHaveBeenCalled();
   });
+
+  it("dismissBadge dismisses autofill nudges when the autofill badge is shown", async () => {
+    const acct = pushActiveAccount();
+
+    mockNudges.showNudgeBadge$.mockImplementation((type: NudgeType) =>
+      of(type === NudgeType.AutofillNudge),
+    );
+
+    const fixture = TestBed.createComponent(SettingsV2Component);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    await component.dismissBadge(NudgeType.AutofillNudge);
+
+    expect(mockNudges.dismissNudge).toHaveBeenCalledTimes(1);
+    expect(mockNudges.dismissNudge).toHaveBeenCalledWith(NudgeType.AutofillNudge, acct.id, true);
+  });
 });

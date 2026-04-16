@@ -150,8 +150,13 @@ export class TwoFactorAuthEmailComponent implements OnInit {
       }
     } catch (e) {
       this.logService.error(e);
+      this.toastService.showToast({
+        variant: "error",
+        title: this.i18nService.t("errorOccurred"),
+        message: "We could not send another code. Try again in a moment.",
+      });
+    } finally {
+      this.emailPromise = undefined;
     }
-
-    this.emailPromise = undefined;
   }
 }

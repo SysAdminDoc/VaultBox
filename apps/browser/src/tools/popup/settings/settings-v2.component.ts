@@ -1,7 +1,7 @@
 import { CommonModule } from "@angular/common";
 import { ChangeDetectionStrategy, Component } from "@angular/core";
 import { RouterModule } from "@angular/router";
-import { filter, firstValueFrom, Observable, shareReplay, switchMap } from "rxjs";
+import { filter, firstValueFrom, map, Observable, shareReplay, switchMap } from "rxjs";
 
 import { JslibModule } from "@bitwarden/angular/jslib.module";
 import { NudgesService, NudgeType } from "@bitwarden/angular/vault";
@@ -40,6 +40,11 @@ export class SettingsV2Component {
       shareReplay({ bufferSize: 1, refCount: true }),
     );
 
+  readonly accountEmail$: Observable<string> = this.authenticatedAccount$.pipe(
+    map((account) => account.email),
+    shareReplay({ bufferSize: 1, refCount: true }),
+  );
+
   readonly showVaultBadge$: Observable<boolean> = this.authenticatedAccount$.pipe(
     switchMap((account) =>
       this.nudgesService.showNudgeBadge$(NudgeType.EmptyVaultNudge, account.id),
@@ -56,7 +61,10 @@ export class SettingsV2Component {
   ) {}
 
   async dismissBadge(type: NudgeType) {
-    if (await firstValueFrom(this.showVaultBadge$)) {
+    const badge$ =
+      type === NudgeType.AutofillNudge ? this.showAutofillBadge$ : this.showVaultBadge$;
+
+    if (await firstValueFrom(badge$)) {
       const account = await firstValueFrom(this.authenticatedAccount$);
       await this.nudgesService.dismissNudge(type, account.id as UserId, true);
     }

@@ -1,4 +1,13 @@
 <bit-form-field>
   <bit-label class="">{{ "verificationCode" | i18n }}</bit-label>
-  <input type="password" bitInput appAutofocus appInputVerbatim [formControl]="tokenFormControl" />
+  <input
+    type="password"
+    bitInput
+    appAutofocus
+    appInputVerbatim
+    autocomplete="one-time-code"
+    name="verificationCode"
+    spellcheck="false"
+    [formControl]="tokenFormControl"
+  />
 </bit-form-field>

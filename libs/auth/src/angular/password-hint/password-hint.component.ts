@@ -20,6 +20,7 @@ import {
   ButtonModule,
   FormFieldModule,
   ToastService,
+  TypographyModule,
 } from "@bitwarden/components";
 
 // FIXME(https://bitwarden.atlassian.net/browse/CL-764): Migrate to OnPush
@@ -34,6 +35,7 @@ import {
     JslibModule,
     ReactiveFormsModule,
     RouterModule,
+    TypographyModule,
   ],
 })
 export class PasswordHintComponent implements OnInit {
@@ -45,6 +47,10 @@ export class PasswordHintComponent implements OnInit {
 
   protected get email() {
     return this.formGroup.controls.email.value;
+  }
+
+  protected get isBrowserClient(): boolean {
+    return this.clientType === ClientType.Browser;
   }
 
   constructor(
@@ -60,6 +66,10 @@ export class PasswordHintComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    if (this.isBrowserClient) {
+      return;
+    }
+
     const email = (await firstValueFrom(this.loginEmailService.loginEmail$)) ?? "";
     this.formGroup.controls.email.setValue(email);
   }
@@ -82,6 +92,11 @@ export class PasswordHintComponent implements OnInit {
   };
 
   protected async cancel() {
+    if (this.isBrowserClient) {
+      await this.router.navigate(["login"]);
+      return;
+    }
+
     await this.loginEmailService.setLoginEmail(this.email);
     await this.router.navigate(["login"]);
   }

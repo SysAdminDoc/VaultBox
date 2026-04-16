@@ -15,6 +15,28 @@
     <app-vault-header *ngIf="vaultState !== VaultStateEnum.Empty"></app-vault-header>
   </ng-container>
 
+  <ng-container *ngIf="vaultState === VaultStateEnum.Empty">
+    <div class="tw-flex tw-min-h-full tw-items-center tw-justify-center tw-py-6">
+      <div
+        class="tw-w-full tw-max-w-[22rem] tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-5 tw-text-center tw-shadow-sm"
+      >
+        <div
+          class="tw-mx-auto tw-mb-4 tw-flex tw-size-12 tw-items-center tw-justify-center tw-rounded-2xl tw-bg-primary-50 tw-text-primary-600"
+        >
+          <i class="bwi bwi-vault bwi-lg" aria-hidden="true"></i>
+        </div>
+        <h2 bitTypography="h4" class="!tw-mb-1">Your vault is ready</h2>
+        <p bitTypography="body2" class="tw-mb-4 tw-text-muted">
+          Add your first item or import an existing backup to start filling from this browser.
+        </p>
+        <div class="tw-flex tw-flex-col tw-gap-2">
+          <a bitButton buttonType="primary" routerLink="/add-cipher">Add your first item</a>
+          <a bitButton buttonType="secondary" routerLink="/import">Import a vault</a>
+        </div>
+      </div>
+    </div>
+  </ng-container>
+
   <ng-container *ngIf="vaultState !== VaultStateEnum.Empty">
     <div
       *ngIf="vaultState === VaultStateEnum.NoResults"

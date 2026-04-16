@@ -15,7 +15,19 @@
   <!-- Hidden email field (pre-filled with vault@localhost) -->
   <input type="hidden" formControlName="email" />
 
-  <div>
+  <div class="tw-space-y-5">
+    <section
+      class="tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+    >
+      <h2 bitTypography="h6" class="!tw-mb-1">Local-first access</h2>
+      <p bitTypography="body2" class="tw-mb-2 tw-text-muted">
+        {{ "extDesc" | i18n }}
+      </p>
+      <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+        {{ "masterPassHintDesc" | i18n }}
+      </p>
+    </section>
+
     <!-- Master Password input -->
     <bit-form-field class="!tw-mb-1">
       <bit-label>{{ "masterPass" | i18n }}</bit-label>
@@ -24,15 +36,20 @@
         formControlName="masterPassword"
         bitInput
         appAutofocus
+        autocomplete="current-password"
         #masterPasswordInputRef
       />
       <button type="button" bitIconButton bitSuffix bitPasswordInputToggle></button>
     </bit-form-field>
 
-    <!-- Link to Password Hint page -->
-    <a bitLink routerLink="/hint" (click)="goToHint()" class="tw-inline-block tw-mb-4">
-      {{ "getMasterPasswordHint" | i18n }}
-    </a>
+    <div class="tw-flex tw-flex-wrap tw-items-start tw-justify-between tw-gap-3">
+      <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+        Need a reminder? Open the local password help page before you try again.
+      </p>
+      <a bitLink routerLink="/hint" (click)="goToHint()" class="tw-inline-flex tw-items-center">
+        Open Password Help
+      </a>
+    </div>
 
     <div class="tw-grid tw-gap-3">
       <!-- Submit button to Login with Master Password -->

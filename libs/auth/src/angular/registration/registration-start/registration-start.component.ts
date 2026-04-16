@@ -22,6 +22,8 @@ import {
   FormFieldModule,
   SvgModule,
   LinkModule,
+  IconModule,
+  TypographyModule,
 } from "@bitwarden/components";
 
 import { LoginEmailService } from "../../../common";
@@ -54,6 +56,8 @@ const DEFAULT_MARKETING_EMAILS_PREF_BY_REGION: Record<Region, boolean> = {
     ButtonModule,
     LinkModule,
     SvgModule,
+    IconModule,
+    TypographyModule,
   ],
 })
 export class RegistrationStartComponent implements OnInit, OnDestroy {

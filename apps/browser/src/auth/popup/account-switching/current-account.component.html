@@ -2,10 +2,13 @@
   <button
     *ngIf="currentAccount$ | async as currentAccount; else defaultButton"
     type="button"
-    class="tw-rounded-full hover:tw-outline hover:tw-outline-1 hover:tw-outline-primary-600"
+    class="tw-relative tw-rounded-full tw-ring-1 tw-ring-transparent tw-transition-[box-shadow,transform] tw-duration-150 hover:tw-ring-primary-300 focus-visible:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-primary-600 focus-visible:tw-ring-offset-2 focus-visible:tw-ring-offset-background active:tw-scale-[0.98]"
     (click)="currentAccountClicked()"
+    [attr.title]="currentAccount.email"
   >
-    <span class="tw-sr-only"> VaultBox {{ currentAccount.email }}</span>
+    <span class="tw-sr-only"
+      >Open account switcher for VaultBox account {{ currentAccount.email }}</span
+    >
     <bit-avatar
       [id]="currentAccount.id"
       [text]="currentAccount.name"
@@ -18,7 +21,8 @@
     <button
       type="button"
       routerLink="/account-switcher"
-      class="tw-rounded-full hover:tw-outline hover:tw-outline-1 hover:tw-outline-offset-1"
+      class="tw-relative tw-rounded-full tw-ring-1 tw-ring-transparent tw-transition-[box-shadow,transform] tw-duration-150 hover:tw-ring-primary-300 focus-visible:tw-outline-none focus-visible:tw-ring-2 focus-visible:tw-ring-primary-600 focus-visible:tw-ring-offset-2 focus-visible:tw-ring-offset-background active:tw-scale-[0.98]"
+      [attr.title]="'switchAccounts' | i18n"
     >
       <span class="tw-sr-only">{{ "switchAccounts" | i18n }}</span>
       <bit-avatar

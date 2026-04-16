@@ -6,6 +6,10 @@
       type="text"
       appAutofocus
       appInputVerbatim
+      autocomplete="one-time-code"
+      inputmode="numeric"
+      name="verificationCode"
+      spellcheck="false"
       [formControl]="tokenFormControl"
       (keyup)="onTokenChange($event)"
     />

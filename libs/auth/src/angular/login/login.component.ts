@@ -56,6 +56,7 @@ import {
   LinkModule,
   ToastService,
   TooltipDirective,
+  TypographyModule,
 } from "@bitwarden/components";
 
 import { LoginComponentService, PasswordPolicies } from "./login-component.service";
@@ -86,6 +87,7 @@ export enum LoginUiState {
     ReactiveFormsModule,
     RouterModule,
     TooltipDirective,
+    TypographyModule,
   ],
 })
 export class LoginComponent implements OnInit, OnDestroy {
@@ -185,7 +187,8 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.loginUiState = LoginUiState.MASTER_PASSWORD_ENTRY;
 
     this.anonLayoutWrapperDataService.setAnonLayoutWrapperData({
-      pageTitle: { key: "logInToBitwarden" },
+      pageTitle: { key: "welcomeBack" },
+      pageSubtitle: { key: "loginOrCreateNewAccount" },
       pageIcon: this.Icons.VaultIcon,
     });
 

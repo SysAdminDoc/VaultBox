@@ -1,13 +1,42 @@
-<div class="tw-flex tw-items-center tw-justify-center" *ngIf="loading">
+<section
+  *ngIf="loading"
+  class="tw-flex tw-flex-col tw-items-center tw-gap-3 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-5 tw-text-center"
+  aria-live="polite"
+>
   <bit-icon name="bwi-spinner" class="bwi-spin bwi-3x" [ariaLabel]="'loading' | i18n"></bit-icon>
-</div>
+  <div class="tw-space-y-1">
+    <h2 bitTypography="h6" class="!tw-mb-0">Preparing Vault Setup…</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      Checking your local vault details before password creation begins.
+    </p>
+  </div>
+</section>
 
-<auth-input-password
-  *ngIf="!loading"
-  [email]="email"
-  [flow]="inputPasswordFlow"
-  [masterPasswordPolicyOptions]="masterPasswordPolicyOptions"
-  [loading]="submitting"
-  [primaryButtonText]="{ key: 'createAccount' }"
-  (onPasswordFormSubmit)="handlePasswordFormSubmit($event)"
-></auth-input-password>
+<ng-container *ngIf="!loading">
+  <section
+    class="tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+  >
+    <h2 bitTypography="h6" class="!tw-mb-1">Set the Password You’ll Use Every Day</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      This offline VaultBox build keeps vault access local to your trusted devices, so choose a
+      master password you will remember without needing email recovery.
+    </p>
+  </section>
+
+  <section class="tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4">
+    <h3 bitTypography="body1" class="!tw-mb-1">What Happens Next</h3>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      VaultBox signs you in locally after setup and opens the import tools so you can bring over
+      saved passwords right away.
+    </p>
+  </section>
+
+  <auth-input-password
+    [email]="email"
+    [flow]="inputPasswordFlow"
+    [masterPasswordPolicyOptions]="masterPasswordPolicyOptions"
+    [loading]="submitting"
+    [primaryButtonText]="{ key: 'createAccount' }"
+    (onPasswordFormSubmit)="handlePasswordFormSubmit($event)"
+  ></auth-input-password>
+</ng-container>

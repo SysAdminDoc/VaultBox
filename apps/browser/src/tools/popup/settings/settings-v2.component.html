@@ -1,5 +1,4 @@
 <popup-page>
-  <!-- VaultBox: Removed premium upgrade banner -->
   <popup-header slot="header" pageTitle="{{ 'settings' | i18n }}">
     <ng-container slot="end">
       <app-pop-out></app-pop-out>
@@ -7,46 +6,123 @@
     </ng-container>
   </popup-header>
 
-  <bit-item-group>
-    <bit-item>
-      <a bit-item-content routerLink="/account-security" [truncate]="false">
-        <i slot="start" class="bwi bwi-lock" aria-hidden="true"></i>
-        {{ "accountSecurity" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <bit-item>
-      <a bit-item-content routerLink="/autofill" [truncate]="false">
-        <i slot="start" class="bwi bwi-check-circle" aria-hidden="true"></i>
-        {{ "autofill" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <!-- VaultBox: Removed notifications settings (cloud push notifications) -->
-    <bit-item>
-      <a bit-item-content routerLink="/vault-settings" [truncate]="false">
-        <i slot="start" class="bwi bwi-vault" aria-hidden="true"></i>
-        {{ "settingsVaultOptions" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <bit-item>
-      <a bit-item-content routerLink="/appearance" [truncate]="false">
-        <i slot="start" class="bwi bwi-brush" aria-hidden="true"></i>
-        {{ "appearance" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
+  <section
+    class="tw-mb-4 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+  >
+    <p
+      bitTypography="body2"
+      class="tw-mb-2 tw-text-muted"
+      *ngIf="accountEmail$ | async as accountEmail"
+    >
+      Signed in as {{ accountEmail }}
+    </p>
+    <h2 bitTypography="h4" class="!tw-mb-1">Extension preferences</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      Tune how VaultBox protects, fills, and presents your local vault on this browser.
+    </p>
+  </section>
 
-    <!-- VaultBox: Removed admin settings link (organizations/auto-confirm) -->
+  <div class="tw-space-y-4">
+    <section>
+      <div class="tw-mb-2">
+        <h2 bitTypography="h6" class="!tw-mb-1">Security and access</h2>
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+          Keep the extension quick to reach without relaxing the parts that protect it.
+        </p>
+      </div>
 
-    <bit-item>
-      <a bit-item-content routerLink="/about" [truncate]="false">
-        <i slot="start" class="bwi bwi-info-circle" aria-hidden="true"></i>
-        {{ "about" | i18n }}
-        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
-      </a>
-    </bit-item>
-    <!-- VaultBox: Removed "Download Bitwarden" and "More from Bitwarden" links -->
-  </bit-item-group>
+      <bit-item-group>
+        <bit-item>
+          <a bit-item-content routerLink="/account-security" [truncate]="false">
+            <i slot="start" class="bwi bwi-lock" aria-hidden="true"></i>
+            <span>{{ "accountSecurity" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Biometrics, PIN unlock, session timeout, and fingerprint phrase.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+        <bit-item>
+          <a
+            bit-item-content
+            routerLink="/autofill"
+            [truncate]="false"
+            (click)="dismissBadge(NudgeType.AutofillNudge)"
+          >
+            <i slot="start" class="bwi bwi-check-circle" aria-hidden="true"></i>
+            <div class="tw-flex tw-items-center tw-gap-2">
+              <span>{{ "autofill" | i18n }}</span>
+              <span *ngIf="showAutofillBadge$ | async" bitBadge variant="primary">Review</span>
+            </div>
+            <div slot="secondary" class="tw-text-sm">
+              Suggestions, blocked sites, and how VaultBox behaves on forms.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+      </bit-item-group>
+    </section>
+
+    <section>
+      <div class="tw-mb-2">
+        <h2 bitTypography="h6" class="!tw-mb-1">Vault workspace</h2>
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+          Shape the layout, maintenance tools, and everyday behavior of your saved items.
+        </p>
+      </div>
+
+      <bit-item-group>
+        <bit-item>
+          <a
+            bit-item-content
+            routerLink="/vault-settings"
+            [truncate]="false"
+            (click)="dismissBadge(NudgeType.EmptyVaultNudge)"
+          >
+            <i slot="start" class="bwi bwi-vault" aria-hidden="true"></i>
+            <div class="tw-flex tw-items-center tw-gap-2">
+              <span>{{ "settingsVaultOptions" | i18n }}</span>
+              <span *ngIf="showVaultBadge$ | async" bitBadge variant="primary">Start here</span>
+            </div>
+            <div slot="secondary" class="tw-text-sm">
+              Folders, imports, exports, archive, and trash.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+        <bit-item>
+          <a bit-item-content routerLink="/appearance" [truncate]="false">
+            <i slot="start" class="bwi bwi-brush" aria-hidden="true"></i>
+            <span>{{ "appearance" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Theme, popup width, compact mode, and quick action preferences.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+      </bit-item-group>
+    </section>
+
+    <section>
+      <div class="tw-mb-2">
+        <h2 bitTypography="h6" class="!tw-mb-1">Support and trust</h2>
+        <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+          Check the project details and confirm the build you have installed.
+        </p>
+      </div>
+
+      <bit-item-group>
+        <bit-item>
+          <a bit-item-content routerLink="/about" [truncate]="false">
+            <i slot="start" class="bwi bwi-info-circle" aria-hidden="true"></i>
+            <span>{{ "about" | i18n }}</span>
+            <div slot="secondary" class="tw-text-sm">
+              Version details, project links, and release context.
+            </div>
+            <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
+          </a>
+        </bit-item>
+      </bit-item-group>
+    </section>
+  </div>
 </popup-page>

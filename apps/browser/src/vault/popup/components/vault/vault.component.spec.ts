@@ -380,6 +380,20 @@ describe("VaultComponent", () => {
     );
   });
 
+  it("shows guided empty-vault actions instead of a blank state", fakeAsync(() => {
+    itemsSvc.emptyVault$.next(true);
+
+    const fixture = TestBed.createComponent(VaultComponent);
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain("Your vault is ready");
+    expect(text).toContain("Add your first item");
+    expect(text).toContain("Import a vault");
+  }));
+
   it("loading$ is true when items loading or filters missing; false when both ready", () => {
     const vaultLoading$ = loadingSvc.loading$ as unknown as BehaviorSubject<boolean>;
     const allFilters$ = filtersSvc.allFilters$ as unknown as Subject<any>;
@@ -487,16 +501,13 @@ describe("VaultComponent", () => {
     void component.ngOnInit();
   });
 
-  it("renders Premium spotlight when eligible and opens dialog on click", fakeAsync(() => {
+  it("keeps legacy spotlight widgets out of the popup even when nudge flags are enabled", fakeAsync(() => {
+    itemsSvc.emptyVault$.next(true);
     itemsSvc.cipherCount$.next(10);
-
     hasPremiumFromAnySource$.next(false);
 
     configSvc.getFeatureFlag$.mockImplementation((_flag: string) => of(true));
-
-    nudgesSvc.showNudgeSpotlight$.mockImplementation((type: NudgeType) =>
-      of(type === NudgeType.PremiumUpgrade),
-    );
+    nudgesSvc.showNudgeSpotlight$.mockImplementation(() => of(true));
 
     const fixture = TestBed.createComponent(VaultComponent);
     const component = fixture.componentInstance;
@@ -505,105 +516,11 @@ describe("VaultComponent", () => {
 
     fixture.detectChanges();
     tick();
-
     fixture.detectChanges();
 
-    const spotlights = Array.from(
-      fixture.nativeElement.querySelectorAll("bit-spotlight"),
-    ) as HTMLElement[];
-    expect(spotlights.length).toBe(1);
-
-    const spotDe = fixture.debugElement.query(By.css("bit-spotlight"));
-    expect(spotDe).toBeTruthy();
-
-    spotDe.triggerEventHandler("onButtonClick", undefined);
-    fixture.detectChanges();
-
-    expect(PremiumUpgradeDialogComponent.open).toHaveBeenCalledTimes(1);
-  }));
-
-  it("renders Empty-Vault spotlight when vaultState is Empty and nudge is on", fakeAsync(() => {
-    configSvc.getFeatureFlag$.mockImplementation((_flag: string) => of(false));
-
-    itemsSvc.emptyVault$.next(true);
-
-    nudgesSvc.showNudgeSpotlight$.mockImplementation((type: NudgeType) => {
-      return of(type === NudgeType.EmptyVaultNudge);
-    });
-
-    const fixture = TestBed.createComponent(VaultComponent);
-    fixture.detectChanges();
-    tick();
-
-    const spotlights = queryAllSpotlights(fixture);
-    expect(spotlights.length).toBe(1);
-
-    expect(fixture.nativeElement.textContent).toContain("emptyVaultNudgeTitle");
-  }));
-
-  it("renders Has-Items spotlight when vault has items and nudge is on", fakeAsync(() => {
-    itemsSvc.emptyVault$.next(false);
-
-    (nudgesSvc.showNudgeSpotlight$ as jest.Mock).mockImplementation((type: NudgeType) => {
-      return of(type === NudgeType.HasVaultItems);
-    });
-
-    const fixture = TestBed.createComponent(VaultComponent);
-    fixture.detectChanges();
-    tick();
-
-    const spotlights = queryAllSpotlights(fixture);
-    expect(spotlights.length).toBe(1);
-
-    expect(fixture.nativeElement.textContent).toContain("hasItemsVaultNudgeTitle");
-  }));
-
-  it("does not render Premium spotlight when account is less than a week old", fakeAsync(() => {
-    itemsSvc.cipherCount$.next(10);
-    hasPremiumFromAnySource$.next(false);
-
-    (nudgesSvc.showNudgeSpotlight$ as jest.Mock).mockImplementation((type: NudgeType) => {
-      return of(type === NudgeType.PremiumUpgrade);
-    });
-
-    const fixture = TestBed.createComponent(VaultComponent);
-    fixture.detectChanges();
-    tick();
-
-    const spotlights = queryAllSpotlights(fixture);
-    expect(spotlights.length).toBe(0);
-  }));
-
-  it("does not render Premium spotlight when vault has less than 5 items", fakeAsync(() => {
-    itemsSvc.cipherCount$.next(3);
-    hasPremiumFromAnySource$.next(false);
-
-    (nudgesSvc.showNudgeSpotlight$ as jest.Mock).mockImplementation((type: NudgeType) => {
-      return of(type === NudgeType.PremiumUpgrade);
-    });
-
-    const fixture = TestBed.createComponent(VaultComponent);
-    fixture.detectChanges();
-    tick();
-
-    const spotlights = queryAllSpotlights(fixture);
-    expect(spotlights.length).toBe(0);
-  }));
-
-  it("does not render Premium spotlight when user already has premium", fakeAsync(() => {
-    itemsSvc.cipherCount$.next(10);
-    hasPremiumFromAnySource$.next(true);
-
-    (nudgesSvc.showNudgeSpotlight$ as jest.Mock).mockImplementation((type: NudgeType) => {
-      return of(type === NudgeType.PremiumUpgrade);
-    });
-
-    const fixture = TestBed.createComponent(VaultComponent);
-    fixture.detectChanges();
-    tick();
-
-    const spotlights = queryAllSpotlights(fixture);
-    expect(spotlights.length).toBe(0);
+    expect(queryAllSpotlights(fixture).length).toBe(0);
+    expect(fixture.nativeElement.textContent).toContain("Your vault is ready");
+    expect(PremiumUpgradeDialogComponent.open).toHaveBeenCalledTimes(0);
   }));
 
   it("does not render app-autofill-vault-list-items or favorites item container when hasSearchText$ is true", () => {

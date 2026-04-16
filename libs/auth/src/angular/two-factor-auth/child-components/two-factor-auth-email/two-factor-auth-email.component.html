@@ -5,20 +5,24 @@
     type="text"
     appAutofocus
     appInputVerbatim
+    autocomplete="one-time-code"
+    inputmode="numeric"
+    name="verificationCode"
+    spellcheck="false"
     [formControl]="tokenFormControl"
     (keyup)="onTokenChange($event)"
   />
 </bit-form-field>
 
 <div class="tw-mb-4">
-  <a
-    bitTypography="helper"
-    class="tw-text-main"
+  <button
+    type="button"
     bitLink
-    href="#"
+    linkType="primary"
+    class="tw-text-sm"
     appStopClick
     (click)="sendEmail(true)"
   >
     {{ "resendCode" | i18n }}
-  </a>
+  </button>
 </div>

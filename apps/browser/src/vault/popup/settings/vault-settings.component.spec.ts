@@ -1,18 +1,16 @@
 import { ChangeDetectionStrategy, Component, DebugElement, input } from "@angular/core";
 import { ComponentFixture, TestBed } from "@angular/core/testing";
 import { By } from "@angular/platform-browser";
-import { provideRouter, Router } from "@angular/router";
+import { provideRouter } from "@angular/router";
 import { mock } from "jest-mock-extended";
 import { BehaviorSubject } from "rxjs";
 
 import { NudgesService } from "@bitwarden/angular/vault";
 import { AccountService } from "@bitwarden/common/auth/abstractions/account.service";
-import { BillingAccountProfileStateService } from "@bitwarden/common/billing/abstractions/account/billing-account-profile-state.service";
 import { ConfigService } from "@bitwarden/common/platform/abstractions/config/config.service";
 import { I18nService } from "@bitwarden/common/platform/abstractions/i18n.service";
 import { CipherArchiveService } from "@bitwarden/common/vault/abstractions/cipher-archive.service";
 import { SyncService } from "@bitwarden/common/vault/abstractions/sync/sync.service.abstraction";
-import { CipherView } from "@bitwarden/common/vault/models/view/cipher.view";
 import { DialogService, ToastService } from "@bitwarden/components";
 
 import { PopOutComponent } from "../../../platform/popup/components/pop-out.component";
@@ -50,43 +48,29 @@ class MockPopOutComponent {
 describe("VaultSettingsComponent", () => {
   let component: VaultSettingsComponent;
   let fixture: ComponentFixture<VaultSettingsComponent>;
-  let router: Router;
   let mockCipherArchiveService: jest.Mocked<CipherArchiveService>;
 
   const mockActiveAccount$ = new BehaviorSubject<{ id: string }>({
     id: "user-id",
   });
-  const mockUserCanArchive$ = new BehaviorSubject<boolean>(false);
   const mockHasArchiveFlagEnabled$ = new BehaviorSubject<boolean>(true);
-  const mockArchivedCiphers$ = new BehaviorSubject<CipherView[]>([]);
   const mockShowNudgeBadge$ = new BehaviorSubject<boolean>(false);
 
   const queryByTestId = (testId: string): DebugElement | null => {
     return fixture.debugElement.query(By.css(`[data-test-id="${testId}"]`));
   };
 
-  const setArchiveState = (
-    canArchive: boolean,
-    archivedItems: CipherView[] = [],
-    flagEnabled = true,
-  ) => {
-    mockUserCanArchive$.next(canArchive);
-    mockArchivedCiphers$.next(archivedItems);
+  const setArchiveState = (flagEnabled = true) => {
     mockHasArchiveFlagEnabled$.next(flagEnabled);
     fixture.detectChanges();
   };
 
   beforeEach(async () => {
     // Reset BehaviorSubjects to initial values
-    mockUserCanArchive$.next(false);
     mockHasArchiveFlagEnabled$.next(true);
-    mockArchivedCiphers$.next([]);
     mockShowNudgeBadge$.next(false);
 
-    mockCipherArchiveService = mock<CipherArchiveService>({
-      userCanArchive$: jest.fn().mockReturnValue(mockUserCanArchive$),
-      archivedCiphers$: jest.fn().mockReturnValue(mockArchivedCiphers$),
-    });
+    mockCipherArchiveService = mock<CipherArchiveService>({});
     mockCipherArchiveService.hasArchiveFlagEnabled$ = mockHasArchiveFlagEnabled$.asObservable();
 
     await TestBed.configureTestingModule({
@@ -106,11 +90,6 @@ describe("VaultSettingsComponent", () => {
           provide: NudgesService,
           useValue: { showNudgeBadge$: jest.fn().mockReturnValue(mockShowNudgeBadge$) },
         },
-
-        {
-          provide: BillingAccountProfileStateService,
-          useValue: mock<BillingAccountProfileStateService>(),
-        },
         {
           provide: AccountService,
           useValue: { activeAccount$: mockActiveAccount$ },
@@ -129,12 +108,10 @@ describe("VaultSettingsComponent", () => {
 
     fixture = TestBed.createComponent(VaultSettingsComponent);
     component = fixture.componentInstance;
-    router = TestBed.inject(Router);
-    jest.spyOn(router, "navigate");
   });
 
-  describe("archive link", () => {
-    it("shows direct archive link when user can archive", () => {
+  describe("archive visibility", () => {
+    it("shows a direct archive link when the archive feature is enabled", () => {
       setArchiveState(true);
 
       const archiveLink = queryByTestId("archive-link");
@@ -142,64 +119,19 @@ describe("VaultSettingsComponent", () => {
       expect(archiveLink?.nativeElement.getAttribute("routerLink")).toBe("/archive");
     });
 
-    it("routes to archive when user has archived items but cannot archive", async () => {
-      setArchiveState(false, [{ id: "cipher1" } as CipherView]);
-
-      const premiumArchiveLink = queryByTestId("premium-archive-link");
-
-      premiumArchiveLink?.nativeElement.click();
-      await fixture.whenStable();
-
-      expect(router.navigate).toHaveBeenCalledWith(["/archive"]);
-    });
-
-    it("prompts for premium when user cannot archive and has no archived items", async () => {
-      setArchiveState(false, []);
-      const badge = component["premiumBadgeComponent"]();
-      jest.spyOn(badge!, "promptForPremium");
-
-      const premiumArchiveLink = queryByTestId("premium-archive-link");
-
-      premiumArchiveLink?.nativeElement.click();
-      await fixture.whenStable();
-
-      expect(badge!.promptForPremium).toHaveBeenCalled();
-    });
-  });
-
-  describe("archive visibility", () => {
-    it("displays archive link when user can archive", () => {
-      setArchiveState(true);
-
-      const archiveLink = queryByTestId("archive-link");
-
-      expect(archiveLink).toBeTruthy();
-      expect(component["userCanArchive"]()).toBe(true);
-    });
-
     it("hides archive link when feature flag is disabled", () => {
-      setArchiveState(false, [], false);
+      setArchiveState(false);
 
       const archiveLink = queryByTestId("archive-link");
-      const premiumArchiveLink = queryByTestId("premium-archive-link");
 
       expect(archiveLink).toBeNull();
-      expect(premiumArchiveLink).toBeNull();
       expect(component["showArchiveItem"]()).toBe(false);
     });
 
-    it("shows premium badge when user has no archived items and cannot archive", () => {
-      setArchiveState(false, []);
+    it("does not render legacy premium archive gating controls", () => {
+      setArchiveState(true);
 
-      expect(component["premiumBadgeComponent"]()).toBeTruthy();
-      expect(component["userHasArchivedItems"]()).toBe(false);
-    });
-
-    it("shows premium badge when user has archived items but cannot archive", () => {
-      setArchiveState(false, [{ id: "cipher1" } as CipherView]);
-
-      expect(component["premiumBadgeComponent"]()).toBeTruthy();
-      expect(component["userHasArchivedItems"]()).toBe(true);
+      expect(queryByTestId("premium-archive-link")).toBeNull();
     });
   });
 });

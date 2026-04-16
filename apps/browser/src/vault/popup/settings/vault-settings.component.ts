@@ -1,24 +1,27 @@
 import { CommonModule } from "@angular/common";
-import { Component, OnDestroy, OnInit, viewChild } from "@angular/core";
+import { Component, OnDestroy, OnInit } from "@angular/core";
 import { toSignal } from "@angular/core/rxjs-interop";
 import { Router, RouterModule } from "@angular/router";
-import { firstValueFrom, map, switchMap } from "rxjs";
+import { firstValueFrom, switchMap } from "rxjs";
 
-import { PremiumBadgeComponent } from "@bitwarden/angular/billing/components/premium-badge";
 import { JslibModule } from "@bitwarden/angular/jslib.module";
 import { NudgesService, NudgeType } from "@bitwarden/angular/vault";
 import { AccountService } from "@bitwarden/common/auth/abstractions/account.service";
 import { getUserId } from "@bitwarden/common/auth/services/account.service";
 import { I18nService } from "@bitwarden/common/platform/abstractions/i18n.service";
 import { CipherArchiveService } from "@bitwarden/common/vault/abstractions/cipher-archive.service";
-import { PremiumUpgradePromptService } from "@bitwarden/common/vault/abstractions/premium-upgrade-prompt.service";
 import { SyncService } from "@bitwarden/common/vault/abstractions/sync/sync.service.abstraction";
-import { BadgeComponent, ItemModule, ToastOptions, ToastService } from "@bitwarden/components";
+import {
+  BadgeComponent,
+  ItemModule,
+  ToastOptions,
+  ToastService,
+  TypographyModule,
+} from "@bitwarden/components";
 
 import { PopOutComponent } from "../../../platform/popup/components/pop-out.component";
 import { PopupHeaderComponent } from "../../../platform/popup/layout/popup-header.component";
 import { PopupPageComponent } from "../../../platform/popup/layout/popup-page.component";
-import { BrowserPremiumUpgradePromptService } from "../services/browser-premium-upgrade-prompt.service";
 
 // FIXME(https://bitwarden.atlassian.net/browse/CL-764): Migrate to OnPush
 // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
@@ -33,31 +36,14 @@ import { BrowserPremiumUpgradePromptService } from "../services/browser-premium-
     PopOutComponent,
     ItemModule,
     BadgeComponent,
-    PremiumBadgeComponent,
-  ],
-  providers: [
-    { provide: PremiumUpgradePromptService, useClass: BrowserPremiumUpgradePromptService },
+    TypographyModule,
   ],
 })
 export class VaultSettingsComponent implements OnInit, OnDestroy {
-  private readonly premiumBadgeComponent = viewChild(PremiumBadgeComponent);
-
   lastSync = "--";
   private userId$ = this.accountService.activeAccount$.pipe(getUserId);
 
-  protected readonly userCanArchive = toSignal(
-    this.userId$.pipe(switchMap((userId) => this.cipherArchiveService.userCanArchive$(userId))),
-  );
-
   protected readonly showArchiveItem = toSignal(this.cipherArchiveService.hasArchiveFlagEnabled$);
-
-  protected readonly userHasArchivedItems = toSignal(
-    this.userId$.pipe(
-      switchMap((userId) =>
-        this.cipherArchiveService.archivedCiphers$(userId).pipe(map((c) => c.length > 0)),
-      ),
-    ),
-  );
 
   protected emptyVaultImportBadge$ = this.accountService.activeAccount$.pipe(
     getUserId,
@@ -112,20 +98,6 @@ export class VaultSettingsComponent implements OnInit, OnDestroy {
       this.lastSync = last.toLocaleDateString() + " " + last.toLocaleTimeString();
     } else {
       this.lastSync = this.i18nService.t("never");
-    }
-  }
-
-  /**
-   * When a user can archive or has previously archived items, route them to
-   * the archive page. Otherwise, prompt them to upgrade to premium.
-   */
-  async conditionallyRouteToArchive(event: Event) {
-    event.preventDefault();
-    const premiumBadge = this.premiumBadgeComponent();
-    if (this.userCanArchive() || this.userHasArchivedItems()) {
-      await this.router.navigate(["/archive"]);
-    } else if (premiumBadge) {
-      await premiumBadge.promptForPremium(event);
     }
   }
 }

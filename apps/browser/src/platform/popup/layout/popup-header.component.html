@@ -3,18 +3,20 @@
   other elements used at the end of the end slot may need to add their own margin/padding to achieve visual alignment.
 -->
 <header
-  class="tw-py-3 bit-compact:tw-py-2 tw-pe-1 bit-compact:tw-pe-0.5 tw-transition-colors tw-duration-200 tw-border-0 tw-border-b tw-border-solid"
+  class="tw-py-3 bit-compact:tw-py-2 tw-pe-2 bit-compact:tw-pe-1 tw-transition-[background-color,border-color,box-shadow] tw-duration-200 tw-border-0 tw-border-b tw-border-solid"
   [ngClass]="{
     'tw-bg-background-alt tw-border-transparent':
       this.background === 'alt' && !pageContentScrolled(),
-    'tw-bg-background tw-border-secondary-300':
+    'tw-bg-background tw-border-secondary-300 tw-shadow-sm':
       (this.background === 'alt' && pageContentScrolled()) || this.background === 'default',
     'tw-ps-4 bit-compact:tw-ps-3': !showBackButton,
     'tw-ps-1 bit-compact:tw-ps-0': showBackButton,
   }"
 >
-  <div class="tw-max-w-screen-sm tw-mx-auto tw-flex tw-justify-between tw-w-full">
-    <div class="tw-inline-flex tw-items-center tw-gap-2 tw-h-9">
+  <div
+    class="tw-max-w-screen-sm tw-mx-auto tw-flex tw-justify-between tw-gap-3 tw-w-full tw-items-center"
+  >
+    <div class="tw-inline-flex tw-min-w-0 tw-items-center tw-gap-2 tw-h-10">
       <button
         bitIconButton="bwi-angle-left"
         type="button"
@@ -22,12 +24,14 @@
         [label]="'back' | i18n"
         [bitAction]="backAction"
       ></button>
-      <h1 *ngIf="pageTitle" bitTypography="h3" class="!tw-mb-0.5">
-        {{ pageTitle }}
-      </h1>
+      <div class="tw-min-w-0 tw-flex tw-items-center">
+        <h1 *ngIf="pageTitle" bitTypography="h3" class="!tw-mb-0 tw-leading-tight tw-truncate">
+          {{ pageTitle }}
+        </h1>
+      </div>
       <ng-content></ng-content>
     </div>
-    <div class="tw-inline-flex tw-items-center tw-gap-2 tw-h-9">
+    <div class="tw-inline-flex tw-items-center tw-gap-1.5 tw-h-10">
       <ng-content select="[slot=end]"></ng-content>
     </div>
   </div>

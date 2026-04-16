@@ -5,15 +5,32 @@
     </ng-container>
   </popup-header>
 
+  <section
+    class="tw-mb-4 tw-rounded-2xl tw-border tw-border-secondary-300 tw-bg-background tw-p-4 tw-shadow-sm"
+  >
+    <h2 bitTypography="h4" class="!tw-mb-1">About VaultBox</h2>
+    <p bitTypography="body2" class="tw-mb-0 tw-text-muted">
+      A local-first password manager built to keep your vault available even when the network is
+      not.
+    </p>
+  </section>
+
   <bit-item-group>
     <bit-item>
       <button type="button" bit-item-content (click)="about()">
-        {{ "about" | i18n }} VaultBox
+        Project details
+        <div slot="secondary" class="tw-text-sm">
+          Version, copyright, and quick copy for the installed build.
+        </div>
+        <i slot="end" class="bwi bwi-angle-right" aria-hidden="true"></i>
       </button>
     </bit-item>
     <bit-item>
       <button type="button" bit-item-content (click)="openGitHub()">
         GitHub
+        <div slot="secondary" class="tw-text-sm">
+          Source code, issues, and release notes for the VaultBox project.
+        </div>
         <i slot="end" class="bwi bwi-external-link" aria-hidden="true"></i>
       </button>
     </bit-item>

@@ -39,6 +39,7 @@ import {
   DialogService,
   IconModule,
   ToastService,
+  TypographyModule,
 } from "@bitwarden/components";
 import { KeyService } from "@bitwarden/key-management";
 import { I18nPipe } from "@bitwarden/ui-common";
@@ -65,6 +66,7 @@ import {
     IconModule,
     InputPasswordComponent,
     I18nPipe,
+    TypographyModule,
   ],
 })
 export class SetInitialPasswordComponent implements OnInit {
@@ -81,6 +83,32 @@ export class SetInitialPasswordComponent implements OnInit {
   protected userId?: UserId;
   protected userType?: SetInitialPasswordUserType;
   protected SetInitialPasswordUserType = SetInitialPasswordUserType;
+
+  protected get setupPanelTitle(): string {
+    switch (this.userType) {
+      case SetInitialPasswordUserType.JIT_PROVISIONED_MP_ORG_USER:
+        return "Finish Creating Your Master Password";
+      case SetInitialPasswordUserType.TDE_ORG_USER_RESET_PASSWORD_PERMISSION_REQUIRES_MP:
+        return "Add a Master Password for Direct Access";
+      case SetInitialPasswordUserType.OFFBOARDED_TDE_ORG_USER:
+        return "Restore Local Vault Access";
+      default:
+        return "Set Your Master Password";
+    }
+  }
+
+  protected get setupPanelBody(): string {
+    switch (this.userType) {
+      case SetInitialPasswordUserType.JIT_PROVISIONED_MP_ORG_USER:
+        return "Choose the password you will use to unlock this vault directly after your organization finishes setup.";
+      case SetInitialPasswordUserType.TDE_ORG_USER_RESET_PASSWORD_PERMISSION_REQUIRES_MP:
+        return "Your organization now requires a master password so you can keep signing in even when assisted recovery is unavailable.";
+      case SetInitialPasswordUserType.OFFBOARDED_TDE_ORG_USER:
+        return "Set a new master password to move back to direct local unlock on this device.";
+      default:
+        return "Choose a master password you can remember confidently because it becomes the direct unlock key for this vault.";
+    }
+  }
 
   constructor(
     private accountService: AccountService,
