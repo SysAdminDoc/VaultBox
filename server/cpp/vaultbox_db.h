@@ -9,13 +9,25 @@ class DB {
     sqlite3* db_ = nullptr;
 public:
     DB() {
-        sqlite3_open(g_db_path.string().c_str(), &db_);
+        int rc = sqlite3_open(g_db_path.string().c_str(), &db_);
+        if (rc != SQLITE_OK) {
+            std::string err = db_ ? sqlite3_errmsg(db_) : "open failed";
+            if (db_) { sqlite3_close(db_); db_ = nullptr; }
+            throw std::runtime_error("sqlite3_open failed: " + err);
+        }
         sqlite3_busy_timeout(db_, 5000);
-        sqlite3_exec(db_, "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;", nullptr, nullptr, nullptr);
+        // WAL gives better concurrent read performance; synchronous=NORMAL is safe
+        // with WAL (durable on full OS crash is not guaranteed but DB stays consistent).
+        sqlite3_exec(db_, "PRAGMA journal_mode=WAL;"
+                          "PRAGMA foreign_keys=ON;"
+                          "PRAGMA synchronous=NORMAL;"
+                          "PRAGMA temp_store=MEMORY;", nullptr, nullptr, nullptr);
     }
     ~DB() { if (db_) sqlite3_close(db_); }
     DB(const DB&) = delete;
     DB& operator=(const DB&) = delete;
+
+    bool ok() const { return db_ != nullptr; }
 
     void exec(const char* sql) { sqlite3_exec(db_, sql, nullptr, nullptr, nullptr); }
 
@@ -55,7 +67,10 @@ public:
 // Schema Init
 // ============================================================================
 inline void init_db() {
-    fs::create_directories(g_data_dir);
+    std::error_code ec;
+    fs::create_directories(g_data_dir, ec);
+    if (ec) throw std::runtime_error("cannot create data directory: " + ec.message());
+
     DB db;
     db.exec(R"(
         CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -84,6 +99,11 @@ inline void init_db() {
             refresh_token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES accounts(id)
         );
+        CREATE INDEX IF NOT EXISTS idx_ciphers_user      ON ciphers(user_id);
+        CREATE INDEX IF NOT EXISTS idx_ciphers_user_del  ON ciphers(user_id, deleted_at);
+        CREATE INDEX IF NOT EXISTS idx_ciphers_folder    ON ciphers(folder_id);
+        CREATE INDEX IF NOT EXISTS idx_folders_user      ON folders(user_id);
+        CREATE INDEX IF NOT EXISTS idx_tokens_user       ON tokens(user_id);
     )");
 
     auto rows = db.query("SELECT value FROM config WHERE key='jwt_secret'");

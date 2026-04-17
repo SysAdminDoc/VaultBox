@@ -25,7 +25,8 @@ inline void update_tray_tooltip() {
     if (!lastBackup.empty()) {
         tip += L"\nBackup: " + to_wstr(lastBackup);
     }
-    if (g_vault.unlocked) {
+    if (g_vault.unlocked.load()) {
+        std::lock_guard<std::mutex> lk(g_vault.mtx);
         tip += L"\nVault: unlocked (" + std::to_wstring(g_vault.entries.size()) + L" items)";
     } else {
         tip += L"\nVault: locked";
@@ -247,8 +248,34 @@ inline LRESULT CALLBACK wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_QUERYENDSESSION:
         return TRUE; // Allow Windows to shut down
 
+    case WM_POWERBROADCAST:
+        // Lock the vault when the system enters sleep/hibernate. A password
+        // manager should not keep plaintext keys in RAM across a suspend where
+        // the laptop may be picked up by someone else.
+        if (wp == PBT_APMSUSPEND) {
+            if (g_vault.unlocked.load()) {
+                g_vault.clear();
+                vb_log("System suspend: vault locked");
+            }
+        }
+        return TRUE;
+
+    case WM_WTSSESSION_CHANGE:
+        // Lock the vault when Windows is locked (Win+L), the user switches
+        // accounts, or the session is remotely disconnected. Registered via
+        // WTSRegisterSessionNotification in create_main_window.
+        if (wp == WTS_SESSION_LOCK || wp == WTS_SESSION_LOGOFF
+            || wp == WTS_CONSOLE_DISCONNECT || wp == WTS_REMOTE_DISCONNECT) {
+            if (g_vault.unlocked.load()) {
+                g_vault.clear();
+                vb_log("Session locked/disconnected: vault locked");
+            }
+        }
+        return 0;
+
     case WM_VAULTBOX_QUIT:
     case WM_ENDSESSION:
+        WTSUnRegisterSessionNotification(hwnd);
         remove_tray_icon();
         g_shutdown = true;
         if (g_webviewController) {
@@ -302,6 +329,10 @@ inline HWND create_main_window(HINSTANCE hInst) {
     g_main_hwnd = hwnd;
     create_tray_icon(hwnd);
     SetTimer(hwnd, 1, 10000, nullptr); // Update tray tooltip every 10s
+
+    // Receive WM_WTSSESSION_CHANGE so we can lock the vault on Win+L etc.
+    // Failure is non-fatal - it just disables that particular auto-lock trigger.
+    WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
 
     return hwnd;
 }

@@ -330,15 +330,14 @@ inline bool unlock_vault(const std::string& password, const std::string& email) 
         return false;
     }
 
-    // Store user key in vault state
-    {
-        std::lock_guard<std::mutex> lk(g_vault.mtx);
-        g_vault.userEncKey = userKey.encKey;
-        g_vault.userMacKey = userKey.macKey;
-        g_vault.userId = userId;
-        g_vault.email = to_lower(email);
-        g_vault.unlocked = true;
-    }
+    // Hold the mutex for the rest of the unlock so that concurrent callers
+    // never see a half-populated vault state (keys present but entries empty).
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
+    g_vault.userEncKey = userKey.encKey;
+    g_vault.userMacKey = userKey.macKey;
+    g_vault.userId = userId;
+    g_vault.email = to_lower(email);
+    g_vault.unlocked = true;
 
     // Decrypt all folders
     auto folderRows = db.query("SELECT * FROM folders WHERE user_id=? ORDER BY name", {userId});
@@ -429,13 +428,14 @@ inline bool unlock_vault(const std::string& password, const std::string& email) 
 // ============================================================================
 // Re-encrypt and save a new/updated entry to the database
 // ============================================================================
-inline bool save_entry(DecryptedEntry& de, bool isNew) {
-    if (!g_vault.unlocked) return false;
-
+// Build the encrypted cipher data JSON for a DecryptedEntry. Requires the user
+// key to be loaded; caller must hold g_vault.mtx. Returns an empty json object
+// on failure (e.g. missing key material).
+inline json encrypt_entry_data_locked(const DecryptedEntry& de) {
+    if (g_vault.userEncKey.size() != 32 || g_vault.userMacKey.size() != 32) return json::object();
     const uint8_t* ek = g_vault.userEncKey.data();
     const uint8_t* mk = g_vault.userMacKey.data();
 
-    // Build cipher data JSON with encrypted fields
     json data;
     data["name"] = encrypt_to_encstring(de.name, ek, mk);
     if (!de.notes.empty()) data["notes"] = encrypt_to_encstring(de.notes, ek, mk);
@@ -468,13 +468,22 @@ inline bool save_entry(DecryptedEntry& de, bool isNew) {
     } else if (de.type == 2) { // SecureNote
         data["secureNote"] = json({{"type", 0}});
     }
+    return data;
+}
+
+// Write an encrypted entry via an already-open DB connection. Caller must hold
+// g_vault.mtx AND ensure g_vault.unlocked is true. Used by bulk import loops
+// so every entry participates in a single BEGIN...COMMIT.
+inline bool save_entry_tx(DB& db, DecryptedEntry& de, bool isNew) {
+    if (!g_vault.unlocked) return false;
+    json data = encrypt_entry_data_locked(de);
+    if (data.empty()) return false;
 
     std::string now = utcnow();
     std::string dataStr = data.dump();
     std::string typeStr = std::to_string(de.type);
     std::string favStr = de.favorite ? "1" : "0";
 
-    DB db;
     if (isNew) {
         de.id = generate_uuid();
         db.run("INSERT INTO ciphers (id, user_id, folder_id, organization_id, type, data, favorite, reprompt, created_at, updated_at) VALUES (?, ?, NULLIF(?,''), NULL, ?, ?, ?, 0, ?, ?)",
@@ -483,16 +492,23 @@ inline bool save_entry(DecryptedEntry& de, bool isNew) {
         db.run("UPDATE ciphers SET folder_id=NULLIF(?,''), type=?, data=?, favorite=?, updated_at=? WHERE id=? AND user_id=?",
             {de.folderId, typeStr, dataStr, favStr, now, de.id, g_vault.userId});
     }
-
     de.updatedAt = now;
     return true;
+}
+
+inline bool save_entry(DecryptedEntry& de, bool isNew) {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
+    DB db;
+    return save_entry_tx(db, de, isNew);
 }
 
 // ============================================================================
 // Delete entry from database
 // ============================================================================
 inline bool delete_entry(const std::string& id) {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
     if (!g_vault.unlocked) return false;
+    if (id.empty()) return false;
     DB db;
     db.run("DELETE FROM ciphers WHERE id=? AND user_id=?", {id, g_vault.userId});
     return true;
@@ -501,11 +517,13 @@ inline bool delete_entry(const std::string& id) {
 // ============================================================================
 // Folder CRUD (encrypted names stored in DB)
 // ============================================================================
-inline std::string save_folder(const std::string& name, const std::string& existingId = "") {
+// Caller must hold g_vault.mtx. Returns new folder id or "" on failure.
+inline std::string save_folder_tx(DB& db, const std::string& name, const std::string& existingId = "") {
     if (!g_vault.unlocked || name.empty()) return "";
+    if (g_vault.userEncKey.size() != 32 || g_vault.userMacKey.size() != 32) return "";
     std::string encName = encrypt_to_encstring(name, g_vault.userEncKey.data(), g_vault.userMacKey.data());
+    if (encName.empty()) return "";
     std::string now = utcnow();
-    DB db;
     if (existingId.empty()) {
         std::string fid = generate_uuid();
         db.run("INSERT INTO folders (id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -518,12 +536,30 @@ inline std::string save_folder(const std::string& name, const std::string& exist
     }
 }
 
-inline bool delete_folder(const std::string& id) {
-    if (!g_vault.unlocked) return false;
+inline std::string save_folder(const std::string& name, const std::string& existingId = "") {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
     DB db;
-    db.run("UPDATE ciphers SET folder_id=NULL, updated_at=? WHERE folder_id=? AND user_id=?",
-        {utcnow(), id, g_vault.userId});
-    db.run("DELETE FROM folders WHERE id=? AND user_id=?", {id, g_vault.userId});
+    return save_folder_tx(db, name, existingId);
+}
+
+inline bool delete_folder(const std::string& id) {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
+    if (!g_vault.unlocked) return false;
+    if (id.empty()) return false;
+    DB db;
+    // Atomic: detach ciphers from the folder and delete the folder as one unit.
+    // If we crashed between these two statements the user would be left with
+    // ciphers referencing a deleted folder_id.
+    db.exec("BEGIN IMMEDIATE");
+    try {
+        db.run("UPDATE ciphers SET folder_id=NULL, updated_at=? WHERE folder_id=? AND user_id=?",
+            {utcnow(), id, g_vault.userId});
+        db.run("DELETE FROM folders WHERE id=? AND user_id=?", {id, g_vault.userId});
+        db.exec("COMMIT");
+    } catch (...) {
+        db.exec("ROLLBACK");
+        return false;
+    }
     return true;
 }
 
@@ -531,9 +567,9 @@ inline bool delete_folder(const std::string& id) {
 // Refresh decrypted vault data from database
 // ============================================================================
 inline void refresh_vault() {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
     if (!g_vault.unlocked) return;
-    std::string password_placeholder; // We don't need to re-derive - we have the key
-    std::string email = g_vault.email;
+    if (g_vault.userEncKey.size() != 32 || g_vault.userMacKey.size() != 32) return;
     std::string userId = g_vault.userId;
     auto encKey = g_vault.userEncKey;
     auto macKey = g_vault.userMacKey;
@@ -612,6 +648,11 @@ inline void refresh_vault() {
 
         g_vault.entries.push_back(std::move(de));
     }
+
+    // Scrub the local copies of the user key so they don't linger on the
+    // stack in process memory.
+    if (!encKey.empty()) SecureZeroMemory(encKey.data(), encKey.size());
+    if (!macKey.empty()) SecureZeroMemory(macKey.data(), macKey.size());
 }
 
 } // namespace VBCrypto

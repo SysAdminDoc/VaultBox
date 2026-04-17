@@ -60,7 +60,12 @@ apps/**/config/local.json
 # C++ build artifacts
 *.obj
 *.exe
+*.res
 server/cpp/deps/
+server/cpp/Output/
+
+# Firefox extension build output
+*.xpi
 
 # Python
 __pycache__/

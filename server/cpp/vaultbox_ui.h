@@ -448,7 +448,7 @@ R"VBHTML(
             </div>
             <div class="about-info">
               <strong>VaultBox Desktop</strong><br>
-              Version <span id="about-version">0.7.0</span><br>
+              Version <span id="about-version">0.9.0</span><br>
               Offline Bitwarden-compatible password manager<br>
               Server: 127.0.0.1:8787<br><br>
               <span style="font-size:11px">Encryption: AES-256-CBC + HMAC-SHA256<br>
@@ -516,12 +516,18 @@ let clipboardTimer = null;
 
 const API = '';
 
-// Auto-lock: track user activity
+// Auto-lock: track user activity. The server enforces a watchdog as well
+// (in case this timer is throttled while the window is backgrounded), but
+// locking client-side too makes the UI react immediately.
 ['mousemove','keydown','click','scroll','touchstart'].forEach(evt =>
   document.addEventListener(evt, () => { lastActivity = Date.now(); }, { passive: true })
 );
 setInterval(() => {
-  if (autoLockMinutes > 0 && vault.entries.length > 0 && (Date.now() - lastActivity) > autoLockMinutes * 60000) {
+  // Lock whenever the vault is unlocked and the timeout elapses, regardless of
+  // whether there are any entries - an empty unlocked vault is still a leaked
+  // master key in memory.
+  const isUnlocked = document.getElementById('main-app')?.style.display !== 'none';
+  if (autoLockMinutes > 0 && isUnlocked && (Date.now() - lastActivity) > autoLockMinutes * 60000) {
     lockVault();
   }
 }, 15000);
@@ -661,10 +667,10 @@ function renderFolders() {
       <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14"><path d="M.54 3.87L.5 3a2 2 0 012-2h3.672a2 2 0 011.414.586l.828.828A2 2 0 009.828 3H13.5a2 2 0 012 2v.054l-.008.108A1 1 0 0015 5.5V14a2 2 0 01-2 2H3a2 2 0 01-2-2V5.5a1 1 0 00-.46-.842z"/></svg>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}</span>
       <div class="folder-actions">
-        <button class="btn-icon" onclick="event.stopPropagation();showFolderDialog('${f.id}','${esc(f.name)}')" style="width:20px;height:20px" title="Rename">
+        <button class="btn-icon" onclick="event.stopPropagation();showFolderDialog('${escAttr(f.id)}','${escAttr(f.name)}')" style="width:20px;height:20px" title="Rename">
           <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10z"/></svg>
         </button>
-        <button class="btn-icon" onclick="event.stopPropagation();deleteFolder('${f.id}')" style="width:20px;height:20px" title="Delete">
+        <button class="btn-icon" onclick="event.stopPropagation();deleteFolder('${escAttr(f.id)}')" style="width:20px;height:20px" title="Delete">
           <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H5.5l1-1h3l1 1h2.5a1 1 0 011 1v1z"/></svg>
         </button>
       </div>
@@ -724,7 +730,7 @@ function renderItems() {
   }
 
   list.innerHTML = items.map(e => `
-    <div class="item-row ${selectedEntryId === e.id ? 'selected' : ''}" onclick="selectEntry('${e.id}')">
+    <div class="item-row ${selectedEntryId === e.id ? 'selected' : ''}" onclick="selectEntry('${escAttr(e.id)}')">
       <div class="item-icon ${getTypeClass(e.type)}">${getTypeIcon(e.type)}</div>
       <div class="item-info">
         <div class="item-name">${esc(e.name || '(no name)')}</div>
@@ -783,8 +789,8 @@ function selectEntry(id) {
 
   document.getElementById('detail-fields').innerHTML = fields;
   document.getElementById('detail-actions').innerHTML = `
-    <button class="btn btn-secondary" onclick="showEntryDialog('${id}')"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10z"/></svg> Edit</button>
-    <button class="btn btn-danger" onclick="deleteEntry('${id}')"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H5.5l1-1h3l1 1h2.5a1 1 0 011 1v1z"/></svg> Delete</button>
+    <button class="btn btn-secondary" onclick="showEntryDialog('${escAttr(id)}')"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 01.708 0l3 3a.5.5 0 010 .708l-10 10a.5.5 0 01-.168.11l-5 2a.5.5 0 01-.65-.65l2-5a.5.5 0 01.11-.168l10-10z"/></svg> Edit</button>
+    <button class="btn btn-danger" onclick="deleteEntry('${escAttr(id)}')"><svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/><path d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 01-1-1V2a1 1 0 011-1H5.5l1-1h3l1 1h2.5a1 1 0 011 1v1z"/></svg> Delete</button>
   `;
   renderItems();
 }
@@ -867,7 +873,7 @@ function showEntryDialog(editId) {
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveEntry(${isEdit ? `'${editId}'` : 'null'})">${isEdit ? 'Save' : 'Create'}</button>
+      <button class="btn btn-primary" onclick="saveEntry(${isEdit ? `'${escAttr(editId)}'` : 'null'})">${isEdit ? 'Save' : 'Create'}</button>
     </div>`;
 
   openModal(html);
@@ -963,7 +969,7 @@ function showFolderDialog(editId, editName) {
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveFolder(${isEdit ? `'${editId}'` : 'null'})">${isEdit ? 'Save' : 'Create'}</button>
+      <button class="btn btn-primary" onclick="saveFolder(${isEdit ? `'${escAttr(editId)}'` : 'null'})">${isEdit ? 'Save' : 'Create'}</button>
     </div>`;
   openModal(html);
   setTimeout(() => document.getElementById('folder-name')?.focus(), 100);
@@ -1109,7 +1115,7 @@ async function loadBackupState() {
       det.style.display = 'block';
       det.innerHTML = '<div style="font-size:12px;font-weight:500;margin-bottom:6px">Detected cloud folders:</div>' +
         browse.folders.map(f =>
-          `<button class="btn btn-secondary btn-sm" style="margin:2px" onclick="setBackupPath('${esc(f.path).replace(/\\/g,'\\\\')}')">${esc(f.name)}</button>`
+          `<button class="btn btn-secondary btn-sm" style="margin:2px" onclick="setBackupPath('${escAttr(f.path)}')">${esc(f.name)}</button>`
         ).join('');
     } else {
       det.style.display = 'none';
@@ -1133,7 +1139,7 @@ async function browseBackupFolder() {
   if (browse.folders && browse.folders.length > 0) {
     html += '<div style="margin-bottom:16px"><div style="font-size:13px;font-weight:500;margin-bottom:8px">Detected Cloud Providers</div>';
     browse.folders.forEach(f => {
-      html += `<button class="btn btn-secondary" style="width:100%;margin-bottom:6px;justify-content:flex-start" onclick="setBackupPath('${esc(f.path).replace(/\\/g,'\\\\\\\\')}');closeModal()">
+      html += `<button class="btn btn-secondary" style="width:100%;margin-bottom:6px;justify-content:flex-start" onclick="setBackupPath('${escAttr(f.path)}');closeModal()">
         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.406 3.342A5.53 5.53 0 018 2c2.69 0 4.923 2 5.166 4.579C14.758 6.804 16 8.137 16 9.773 16 11.569 14.502 13 12.687 13H3.781C1.708 13 0 11.366 0 9.318c0-1.763 1.266-3.223 2.942-3.593.143-.863.698-1.723 1.464-2.383z"/></svg>
         ${esc(f.name)}<span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${esc(f.path)}</span></button>`;
     });
@@ -1210,13 +1216,22 @@ function toggleLog() {
   document.getElementById('log-panel').classList.toggle('open', logVisible);
 }
 
+// Poll only when the log panel is visible AND the tab/window is visible.
+// Avoids draining log messages onto a panel nobody's looking at, and stops
+// hitting the server every 2 seconds forever.
 async function pollLogs() {
   try {
-    const data = await api('/api/vaultbox/logs');
-    if (data.logs && data.logs.length > 0) {
-      const el = document.getElementById('log-content');
-      el.textContent += data.logs.join('\n') + '\n';
-      el.scrollTop = el.scrollHeight;
+    if (logVisible && !document.hidden) {
+      const data = await api('/api/vaultbox/logs');
+      if (data.logs && data.logs.length > 0) {
+        const el = document.getElementById('log-content');
+        el.textContent += data.logs.join('\n') + '\n';
+        // Cap DOM log size so it doesn't grow unbounded across long sessions.
+        if (el.textContent.length > 200000) {
+          el.textContent = el.textContent.slice(-150000);
+        }
+        el.scrollTop = el.scrollHeight;
+      }
     }
   } catch (e) {}
   setTimeout(pollLogs, 2000);
@@ -1265,24 +1280,42 @@ function launchUri(uri) {
 // Clipboard
 // =====================================================================
 async function copyText(text, label) {
+  let copied = false;
   try {
     await navigator.clipboard.writeText(text);
-    toast(`${label} copied` + (clipboardClearSeconds > 0 ? ` (clears in ${clipboardClearSeconds}s)` : ''));
+    copied = true;
   } catch (e) {
     const ta = document.createElement('textarea');
     ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand('copy');
+    try { copied = document.execCommand('copy'); } catch (_) {}
     document.body.removeChild(ta);
-    toast(`${label} copied`);
   }
-  // Auto-clear clipboard
-  if (clipboardClearSeconds > 0) {
+  toast(copied
+    ? `${label} copied` + (clipboardClearSeconds > 0 ? ` (clears in ${clipboardClearSeconds}s)` : '')
+    : `Clipboard access denied`,
+    copied ? 'success' : 'error');
+
+  // Auto-clear only if VaultBox is still the clipboard owner - avoids
+  // stomping on something the user copied from another app after us.
+  if (copied && clipboardClearSeconds > 0) {
     if (clipboardTimer) clearTimeout(clipboardTimer);
     clipboardTimer = setTimeout(async () => {
-      try { await navigator.clipboard.writeText(''); } catch(e) {}
       clipboardTimer = null;
+      try {
+        const current = await navigator.clipboard.readText();
+        if (current === text) {
+          await navigator.clipboard.writeText('');
+        }
+      } catch (_) {
+        // readText may be blocked (permissions / no focus). Fall back to
+        // best-effort overwrite with empty string.
+        try { await navigator.clipboard.writeText(''); } catch (_) {}
+      }
     }, clipboardClearSeconds * 1000);
   }
 }
@@ -1291,12 +1324,31 @@ async function copyText(text, label) {
 // Utilities
 // =====================================================================
 function esc(s) {
-  if (!s) return '';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+// Safe for embedding a value inside a JS single-quoted string literal that
+// sits inside an HTML attribute delimited by double quotes. Order matters:
+//   1. JS-escape first (\, ', CR/LF/TAB) so the JS parser decodes to the
+//      original value once the HTML layer is peeled off.
+//   2. Then HTML-escape only the characters that can break the attribute:
+//      & < > ". We deliberately do NOT HTML-escape ' - the HTML parser would
+//      decode &#39; back to ' before handing the attribute value to the JS
+//      parser, re-introducing the very breakout we're trying to prevent.
 function escAttr(s) {
-  if (!s) return '';
-  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"').replace(/\n/g,'\\n');
+  if (s == null) return '';
+  return String(s)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/\r/g,'\\r')
+    .replace(/\n/g,'\\n')
+    .replace(/\t/g,'\\t')
+    .replace(/</g,'\\x3C')
+    .replace(/>/g,'\\x3E')
+    .replace(/&/g,'&amp;')
+    .replace(/"/g,'&quot;');
 }
 function formatDate(s) {
   if (!s) return '';
@@ -1416,6 +1468,18 @@ async function setClipboardClear(val) {
 // =====================================================================
 // Update Check
 // =====================================================================
+function semverGt(a, b) {
+  const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const av = pa[i] || 0, bv = pb[i] || 0;
+    if (av > bv) return true;
+    if (av < bv) return false;
+  }
+  return false;
+}
+
 async function checkForUpdate() {
   const btn = document.getElementById('update-btn');
   const status = document.getElementById('update-status');
@@ -1425,10 +1489,11 @@ async function checkForUpdate() {
     const res = await fetch('https://api.github.com/repos/SysAdminDoc/VaultBox/releases/latest');
     if (!res.ok) throw new Error('GitHub API error');
     const release = await res.json();
-    const latest = release.tag_name.replace(/^v/, '');
+    const latest = String(release.tag_name || '').replace(/^v/, '');
     const cur = document.getElementById('about-version')?.textContent || '0.0.0';
-    if (latest !== cur && latest > cur) {
-      status.innerHTML = `Update available: <strong style="color:var(--success)">${latest}</strong> <a href="#" onclick="appCommand(\'launch:${release.html_url}\');return false" style="margin-left:8px">Download</a>`;
+    if (latest && semverGt(latest, cur)) {
+      const url = String(release.html_url || '');
+      status.innerHTML = `Update available: <strong style="color:var(--success)">${esc(latest)}</strong> <a href="#" onclick="launchUri('${escAttr(url)}');return false" style="margin-left:8px">Download</a>`;
     } else {
       status.textContent = 'You are up to date (' + cur + ')';
     }
@@ -1493,20 +1558,35 @@ async function createNewVault() {
 // Drag & Drop Import
 // =====================================================================
 let dragCounter = 0;
+function dragHasFiles(e) {
+  const types = e.dataTransfer?.types;
+  if (!types) return false;
+  for (let i = 0; i < types.length; i++) if (types[i] === 'Files') return true;
+  return false;
+}
 document.addEventListener('dragenter', e => {
+  if (!dragHasFiles(e)) return;
   e.preventDefault();
   if (++dragCounter === 1) document.getElementById('drop-overlay').style.display = 'flex';
 });
 document.addEventListener('dragleave', e => {
+  if (!dragHasFiles(e)) return;
   e.preventDefault();
-  if (--dragCounter === 0) document.getElementById('drop-overlay').style.display = 'none';
+  if (--dragCounter <= 0) {
+    dragCounter = 0;
+    document.getElementById('drop-overlay').style.display = 'none';
+  }
 });
-document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('dragover', e => { if (dragHasFiles(e)) e.preventDefault(); });
 document.addEventListener('drop', async e => {
   e.preventDefault();
   dragCounter = 0;
   document.getElementById('drop-overlay').style.display = 'none';
-  if (!vault.entries && !vault.folders) { toast('Unlock vault first', 'error'); return; }
+  // Import requires an unlocked vault; silently ignore drops on the lock screen.
+  if (document.getElementById('main-app').style.display === 'none') {
+    toast('Unlock vault before importing', 'error');
+    return;
+  }
   const file = e.dataTransfer?.files?.[0];
   if (!file) return;
   const name = file.name.toLowerCase();

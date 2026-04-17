@@ -7,7 +7,7 @@
 namespace VBImport {
 
 // ============================================================================
-// CSV Parser (handles quoted fields)
+// CSV Parser (handles quoted fields, including fields with embedded newlines)
 // ============================================================================
 inline std::vector<std::string> parse_csv_line(const std::string& line) {
     std::vector<std::string> fields;
@@ -42,6 +42,32 @@ inline std::vector<std::string> parse_csv_line(const std::string& line) {
     return fields;
 }
 
+// Read a full logical CSV record from the stream. A record may span multiple
+// physical lines if a quoted field contains embedded newlines (e.g. multi-line
+// notes in a Bitwarden export). Returns false at EOF without any data.
+inline bool read_csv_record(std::istream& in, std::string& out) {
+    out.clear();
+    std::string line;
+    if (!std::getline(in, line)) return false;
+    out = line;
+    // Count unescaped quotes to detect "we're still inside a quoted field".
+    auto unbalanced = [](const std::string& s) {
+        bool inQ = false;
+        for (size_t i = 0; i < s.size(); i++) {
+            if (s[i] == '"') {
+                if (inQ && i + 1 < s.size() && s[i + 1] == '"') { i++; continue; }
+                inQ = !inQ;
+            }
+        }
+        return inQ;
+    };
+    while (unbalanced(out) && std::getline(in, line)) {
+        out += "\n";
+        out += line;
+    }
+    return true;
+}
+
 inline std::string csv_escape(const std::string& s) {
     if (s.find_first_of(",\"\r\n") == std::string::npos) return s;
     std::string out = "\"";
@@ -68,58 +94,75 @@ inline int import_bitwarden_json(const std::string& filepath) {
     json data;
     try { data = json::parse(content); } catch (...) { return -1; }
 
-    const uint8_t* ek = g_vault.userEncKey.data();
-    const uint8_t* mk = g_vault.userMacKey.data();
-    int count = 0;
-
-    // Import folders first
-    std::map<std::string, std::string> folderIdMap; // old id -> new id
-    if (data.contains("folders") && data["folders"].is_array()) {
-        for (auto& fj : data["folders"]) {
-            std::string name = fj.value("name", "");
-            if (name.empty()) continue;
-            std::string newId = VBCrypto::save_folder(name);
-            if (!newId.empty()) {
-                std::string oldId = fj.value("id", "");
-                if (!oldId.empty()) folderIdMap[oldId] = newId;
-            }
-        }
+    // Reject Bitwarden's encrypted export format - we can't decrypt it with the
+    // current user key (it uses a password-derived key from the exporting account).
+    // Telling the user is much friendlier than importing zero items.
+    if (data.is_object() && data.contains("encrypted") && data["encrypted"].is_boolean() && data["encrypted"].get<bool>()) {
+        vb_log("Import rejected: encrypted Bitwarden JSON export not supported. Re-export unencrypted.");
+        return -2;
     }
 
-    // Import items
-    auto items = data.value("items", json::array());
-    for (auto& item : items) {
-        DecryptedEntry de;
-        de.name = item.value("name", "");
-        de.notes = item.value("notes", "");
-        de.type = item.value("type", 1);
-        de.favorite = item.value("favorite", false);
+    int count = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_vault.mtx);
+        if (!g_vault.unlocked) return -1;
 
-        // Map folder
-        std::string oldFolderId = item.value("folderId", "");
-        if (!oldFolderId.empty() && folderIdMap.count(oldFolderId))
-            de.folderId = folderIdMap[oldFolderId];
+        DB db;
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            // Import folders first, mapping the export's folder ids to freshly
+            // generated local ids so we can rewire item folderIds below.
+            std::map<std::string, std::string> folderIdMap;
+            if (data.contains("folders") && data["folders"].is_array()) {
+                for (auto& fj : data["folders"]) {
+                    std::string name = fj.value("name", "");
+                    if (name.empty()) continue;
+                    std::string newId = VBCrypto::save_folder_tx(db, name);
+                    if (!newId.empty()) {
+                        std::string oldId = fj.value("id", "");
+                        if (!oldId.empty()) folderIdMap[oldId] = newId;
+                    }
+                }
+            }
 
-        if (item.contains("login") && item["login"].is_object()) {
-            auto& login = item["login"];
-            de.username = login.value("username", "");
-            de.password = login.value("password", "");
-            de.totp = login.value("totp", "");
-            if (login.contains("uris") && login["uris"].is_array() && !login["uris"].empty())
-                de.uri = login["uris"][0].value("uri", "");
-        }
-        if (item.contains("card") && item["card"].is_object()) {
-            auto& card = item["card"];
-            de.username = card.value("cardholderName", "");
-            de.password = card.value("number", "");
-        }
-        if (item.contains("identity") && item["identity"].is_object()) {
-            auto& ident = item["identity"];
-            de.username = ident.value("firstName", "") + std::string(" ") + ident.value("lastName", "");
-            de.uri = ident.value("email", "");
-        }
+            auto items = data.value("items", json::array());
+            for (auto& item : items) {
+                DecryptedEntry de;
+                de.name = item.value("name", "");
+                de.notes = item.value("notes", "");
+                de.type = item.value("type", 1);
+                de.favorite = item.value("favorite", false);
 
-        if (VBCrypto::save_entry(de, true)) count++;
+                std::string oldFolderId = item.value("folderId", "");
+                if (!oldFolderId.empty() && folderIdMap.count(oldFolderId))
+                    de.folderId = folderIdMap[oldFolderId];
+
+                if (item.contains("login") && item["login"].is_object()) {
+                    auto& login = item["login"];
+                    de.username = login.value("username", "");
+                    de.password = login.value("password", "");
+                    de.totp = login.value("totp", "");
+                    if (login.contains("uris") && login["uris"].is_array() && !login["uris"].empty())
+                        de.uri = login["uris"][0].value("uri", "");
+                }
+                if (item.contains("card") && item["card"].is_object()) {
+                    auto& card = item["card"];
+                    de.username = card.value("cardholderName", "");
+                    de.password = card.value("number", "");
+                }
+                if (item.contains("identity") && item["identity"].is_object()) {
+                    auto& ident = item["identity"];
+                    de.username = ident.value("firstName", "") + std::string(" ") + ident.value("lastName", "");
+                    de.uri = ident.value("email", "");
+                }
+
+                if (VBCrypto::save_entry_tx(db, de, true)) count++;
+            }
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            return -1;
+        }
     }
 
     VBCrypto::refresh_vault();
@@ -136,45 +179,62 @@ inline int import_bitwarden_csv(const std::string& filepath) {
     std::ifstream f(filepath);
     if (!f.is_open()) return -1;
 
-    std::string line;
-    std::getline(f, line); // header: folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp
+    std::string record;
+    if (!read_csv_record(f, record)) return -1; // header
 
     int count = 0;
-    while (std::getline(f, line)) {
-        if (line.empty()) continue;
-        auto fields = parse_csv_line(line);
-        if (fields.size() < 10) continue;
+    {
+        std::lock_guard<std::mutex> lk(g_vault.mtx);
+        if (!g_vault.unlocked) return -1;
 
-        DecryptedEntry de;
-        // folder=0, favorite=1, type=2, name=3, notes=4, fields=5, reprompt=6,
-        // login_uri=7, login_username=8, login_password=9
-        std::string folderName = fields[0];
-        de.favorite = (fields[1] == "1");
-        de.type = 1; // Login
-        if (fields[2] == "note") de.type = 2;
-        else if (fields[2] == "card") de.type = 3;
-        else if (fields[2] == "identity") de.type = 4;
-        de.name = fields[3];
-        de.notes = fields[4];
-        de.uri = fields.size() > 7 ? fields[7] : "";
-        de.username = fields.size() > 8 ? fields[8] : "";
-        de.password = fields.size() > 9 ? fields[9] : "";
-        de.totp = fields.size() > 10 ? fields[10] : "";
+        // Seed folder-name -> id map from the already-decrypted in-memory vault.
+        std::map<std::string, std::string> nameToId;
+        for (auto& ef : g_vault.folders) nameToId[ef.name] = ef.id;
 
-        // Find or create folder
-        if (!folderName.empty()) {
-            bool found = false;
-            for (auto& ef : g_vault.folders) {
-                if (ef.name == folderName) { de.folderId = ef.id; found = true; break; }
+        DB db;
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            while (read_csv_record(f, record)) {
+                if (record.empty()) continue;
+                auto fields = parse_csv_line(record);
+                if (fields.size() < 10) continue;
+
+                DecryptedEntry de;
+                // folder=0, favorite=1, type=2, name=3, notes=4, fields=5, reprompt=6,
+                // login_uri=7, login_username=8, login_password=9, login_totp=10
+                std::string folderName = fields[0];
+                de.favorite = (fields[1] == "1");
+                de.type = 1; // Login
+                if (fields[2] == "note") de.type = 2;
+                else if (fields[2] == "card") de.type = 3;
+                else if (fields[2] == "identity") de.type = 4;
+                de.name = fields[3];
+                de.notes = fields[4];
+                de.uri = fields.size() > 7 ? fields[7] : "";
+                de.username = fields.size() > 8 ? fields[8] : "";
+                de.password = fields.size() > 9 ? fields[9] : "";
+                de.totp = fields.size() > 10 ? fields[10] : "";
+
+                if (!folderName.empty()) {
+                    auto it = nameToId.find(folderName);
+                    if (it == nameToId.end()) {
+                        std::string fid = VBCrypto::save_folder_tx(db, folderName);
+                        if (!fid.empty()) {
+                            nameToId[folderName] = fid;
+                            de.folderId = fid;
+                        }
+                    } else {
+                        de.folderId = it->second;
+                    }
+                }
+
+                if (VBCrypto::save_entry_tx(db, de, true)) count++;
             }
-            if (!found) {
-                de.folderId = VBCrypto::save_folder(folderName);
-                DecryptedFolder df; df.id = de.folderId; df.name = folderName;
-                g_vault.folders.push_back(df);
-            }
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            return -1;
         }
-
-        if (VBCrypto::save_entry(de, true)) count++;
     }
 
     VBCrypto::refresh_vault();
@@ -191,29 +251,83 @@ inline int import_chrome_csv(const std::string& filepath) {
     std::ifstream f(filepath);
     if (!f.is_open()) return -1;
 
-    std::string line;
-    std::getline(f, line); // header
+    std::string record;
+    if (!read_csv_record(f, record)) return -1; // header
 
     int count = 0;
-    while (std::getline(f, line)) {
-        if (line.empty()) continue;
-        auto fields = parse_csv_line(line);
-        if (fields.size() < 4) continue;
+    {
+        std::lock_guard<std::mutex> lk(g_vault.mtx);
+        if (!g_vault.unlocked) return -1;
 
-        DecryptedEntry de;
-        de.type = 1;
-        de.name = fields[0];
-        de.uri = fields[1];
-        de.username = fields[2];
-        de.password = fields[3];
-        if (fields.size() > 4) de.notes = fields[4];
+        DB db;
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            while (read_csv_record(f, record)) {
+                if (record.empty()) continue;
+                auto fields = parse_csv_line(record);
+                if (fields.size() < 4) continue;
 
-        if (VBCrypto::save_entry(de, true)) count++;
+                DecryptedEntry de;
+                de.type = 1;
+                de.name = fields[0];
+                de.uri = fields[1];
+                de.username = fields[2];
+                de.password = fields[3];
+                if (fields.size() > 4) de.notes = fields[4];
+
+                if (VBCrypto::save_entry_tx(db, de, true)) count++;
+            }
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            return -1;
+        }
     }
 
     VBCrypto::refresh_vault();
     vb_log("Imported " + std::to_string(count) + " entries from Chrome CSV");
     return count;
+}
+
+// Decode the small set of XML entities that appear in KeePass plaintext exports.
+// KeePass escapes: & < > " ' as &amp; &lt; &gt; &quot; &apos;. Numeric refs are rare
+// in KeePass output but we handle them defensively.
+inline std::string xml_decode(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ) {
+        if (s[i] != '&') { out += s[i++]; continue; }
+        auto semi = s.find(';', i + 1);
+        if (semi == std::string::npos || semi - i > 8) { out += s[i++]; continue; }
+        std::string ent = s.substr(i + 1, semi - i - 1);
+        if (ent == "amp")       out += '&';
+        else if (ent == "lt")   out += '<';
+        else if (ent == "gt")   out += '>';
+        else if (ent == "quot") out += '"';
+        else if (ent == "apos") out += '\'';
+        else if (!ent.empty() && ent[0] == '#') {
+            int code = 0;
+            try {
+                if (ent.size() > 1 && (ent[1] == 'x' || ent[1] == 'X'))
+                    code = std::stoi(ent.substr(2), nullptr, 16);
+                else
+                    code = std::stoi(ent.substr(1));
+            } catch (...) { code = 0; }
+            if (code > 0 && code < 0x80) out += (char)code;
+            else if (code >= 0x80 && code < 0x800) {
+                out += (char)(0xC0 | (code >> 6));
+                out += (char)(0x80 | (code & 0x3F));
+            } else if (code >= 0x800 && code < 0x10000) {
+                out += (char)(0xE0 | (code >> 12));
+                out += (char)(0x80 | ((code >> 6) & 0x3F));
+                out += (char)(0x80 | (code & 0x3F));
+            }
+        } else {
+            out += s.substr(i, semi - i + 1); // unknown entity: keep as-is
+        }
+        i = semi + 1;
+    }
+    return out;
 }
 
 // ============================================================================
@@ -230,50 +344,60 @@ inline int import_keepass_xml(const std::string& filepath) {
     f.close();
 
     int count = 0;
-    size_t pos = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_vault.mtx);
+        if (!g_vault.unlocked) return -1;
 
-    // Find each <Entry> block
-    while ((pos = content.find("<Entry>", pos)) != std::string::npos) {
-        size_t end = content.find("</Entry>", pos);
-        if (end == std::string::npos) break;
+        DB db;
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            size_t pos = 0;
+            // Find each <Entry> block
+            while ((pos = content.find("<Entry>", pos)) != std::string::npos) {
+                size_t end = content.find("</Entry>", pos);
+                if (end == std::string::npos) break;
 
-        std::string entry = content.substr(pos, end - pos + 8);
-        pos = end + 8;
+                std::string entry = content.substr(pos, end - pos + 8);
+                pos = end + 8;
 
-        DecryptedEntry de;
-        de.type = 1;
+                DecryptedEntry de;
+                de.type = 1;
 
-        // Extract <String><Key>...</Key><Value>...</Value></String> pairs
-        size_t spos = 0;
-        while ((spos = entry.find("<String>", spos)) != std::string::npos) {
-            size_t send = entry.find("</String>", spos);
-            if (send == std::string::npos) break;
+                // Extract <String><Key>...</Key><Value>...</Value></String> pairs
+                size_t spos = 0;
+                while ((spos = entry.find("<String>", spos)) != std::string::npos) {
+                    size_t send = entry.find("</String>", spos);
+                    if (send == std::string::npos) break;
 
-            std::string block = entry.substr(spos, send - spos);
-            spos = send + 9;
+                    std::string block = entry.substr(spos, send - spos);
+                    spos = send + 9;
 
-            // Extract Key
-            auto kstart = block.find("<Key>"); auto kend = block.find("</Key>");
-            if (kstart == std::string::npos || kend == std::string::npos) continue;
-            std::string key = block.substr(kstart + 5, kend - kstart - 5);
+                    auto kstart = block.find("<Key>"); auto kend = block.find("</Key>");
+                    if (kstart == std::string::npos || kend == std::string::npos) continue;
+                    std::string key = block.substr(kstart + 5, kend - kstart - 5);
 
-            // Extract Value
-            auto vstart = block.find("<Value"); auto vend = block.find("</Value>");
-            if (vstart == std::string::npos || vend == std::string::npos) continue;
-            // Skip past attributes like Protected="True"
-            auto vclose = block.find('>', vstart);
-            if (vclose == std::string::npos) continue;
-            std::string val = block.substr(vclose + 1, vend - vclose - 1);
+                    auto vstart = block.find("<Value"); auto vend = block.find("</Value>");
+                    if (vstart == std::string::npos || vend == std::string::npos) continue;
+                    auto vclose = block.find('>', vstart);
+                    if (vclose == std::string::npos) continue;
+                    std::string val = block.substr(vclose + 1, vend - vclose - 1);
 
-            if (key == "Title") de.name = val;
-            else if (key == "UserName") de.username = val;
-            else if (key == "Password") de.password = val;
-            else if (key == "URL") de.uri = val;
-            else if (key == "Notes") de.notes = val;
-        }
+                    val = xml_decode(val);
+                    if (key == "Title") de.name = val;
+                    else if (key == "UserName") de.username = val;
+                    else if (key == "Password") de.password = val;
+                    else if (key == "URL") de.uri = val;
+                    else if (key == "Notes") de.notes = val;
+                }
 
-        if (!de.name.empty()) {
-            if (VBCrypto::save_entry(de, true)) count++;
+                if (!de.name.empty()) {
+                    if (VBCrypto::save_entry_tx(db, de, true)) count++;
+                }
+            }
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            return -1;
         }
     }
 
@@ -286,6 +410,7 @@ inline int import_keepass_xml(const std::string& filepath) {
 // Export as Bitwarden JSON
 // ============================================================================
 inline bool export_bitwarden_json(const std::string& filepath) {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
     if (!g_vault.unlocked) return false;
 
     json output;
@@ -358,6 +483,7 @@ inline bool export_bitwarden_json(const std::string& filepath) {
 // Export as CSV
 // ============================================================================
 inline bool export_csv(const std::string& filepath) {
+    std::lock_guard<std::mutex> lk(g_vault.mtx);
     if (!g_vault.unlocked) return false;
 
     std::ofstream out(filepath);

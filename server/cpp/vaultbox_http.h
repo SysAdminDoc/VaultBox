@@ -6,27 +6,97 @@
 
 inline void setup_routes(httplib::Server& svr) {
 
-    // --- CORS ---
-    svr.set_post_routing_handler([](const httplib::Request& req, httplib::Response& res) {
-        auto origin = req.get_header_value("Origin");
-        bool allowed = origin.empty()
-            || origin.rfind("chrome-extension://", 0) == 0
-            || origin.rfind("moz-extension://", 0) == 0
-            || origin == "http://127.0.0.1:8787"
-            || origin == "http://localhost:8787";
-        std::string cors_origin = allowed && !origin.empty() ? origin : "http://127.0.0.1:8787";
+    // Cap incoming payloads to protect against DoS via unbounded bodies.
+    // 64 MB is plenty for any legitimate import/export.
+    svr.set_payload_max_length(64 * 1024 * 1024);
+
+    // Shared predicate used by both pre-routing (for origin enforcement) and
+    // post-routing (for CORS header emission) handlers.
+    auto classify_origin = [](const httplib::Request& req) {
+        struct Info { std::string origin; bool allowed; bool is_local; bool is_extension; bool is_vaultbox_api; };
+        Info info;
+        info.origin = req.get_header_value("Origin");
+        const std::string& path = req.path;
+        info.is_vaultbox_api = (path.rfind("/api/vaultbox/", 0) == 0 || path == "/api/vaultbox");
+        info.is_local = (info.origin == "http://127.0.0.1:8787" || info.origin == "http://localhost:8787");
+        info.is_extension = (info.origin.rfind("chrome-extension://", 0) == 0
+                          || info.origin.rfind("moz-extension://", 0) == 0);
+        if (info.is_vaultbox_api) {
+            // GUI API: same-origin SPA only (plus same-origin fetches with no Origin header).
+            info.allowed = info.origin.empty() || info.is_local;
+        } else {
+            // Bitwarden-compat API: allow the VaultBox browser extension too.
+            info.allowed = info.origin.empty() || info.is_local || info.is_extension;
+        }
+        return info;
+    };
+
+    // Block disallowed cross-origin requests before the route runs. This prevents
+    // a malicious browser extension from invoking privileged /api/vaultbox/* endpoints
+    // (e.g. /api/vaultbox/vault or /api/vaultbox/export) while the vault is unlocked.
+    svr.set_pre_routing_handler([classify_origin](const httplib::Request& req, httplib::Response& res) {
+        if (req.method == "OPTIONS") return httplib::Server::HandlerResponse::Unhandled;
+        auto info = classify_origin(req);
+        if (!info.allowed) {
+            res.status = 403;
+            res.set_content(json({{"message","Origin not allowed"}}).dump(), "application/json");
+            return httplib::Server::HandlerResponse::Handled;
+        }
+
+        // Any non-trivial vault-touching hit resets the server auto-lock watchdog.
+        // Skip the chatty polling endpoints so that a hidden SPA polling /logs
+        // every 2 seconds doesn't defeat auto-lock.
+        const std::string& p = req.path;
+        bool is_poll = (p == "/alive" || p == "/api/alive"
+                     || p == "/api/vaultbox/logs"
+                     || p == "/api/vaultbox/status");
+        if (!is_poll) touch_activity();
+
+        return httplib::Server::HandlerResponse::Unhandled;
+    });
+
+    // Apply CORS + security headers on the way out.
+    svr.set_post_routing_handler([classify_origin](const httplib::Request& req, httplib::Response& res) {
+        auto info = classify_origin(req);
+        std::string cors_origin = (info.allowed && !info.origin.empty()) ? info.origin : "http://127.0.0.1:8787";
         res.set_header("Access-Control-Allow-Origin", cors_origin);
         res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "*");
+        res.set_header("Access-Control-Allow-Headers",
+            "Authorization, Content-Type, X-Requested-With, Device-Type, Bitwarden-Client-Name, Bitwarden-Client-Version");
         res.set_header("Access-Control-Allow-Credentials", "true");
+        res.set_header("Access-Control-Max-Age", "600");
+        res.set_header("Vary", "Origin");
+        // API responses must not be cached anywhere - they can contain decrypted vault material.
+        res.set_header("Cache-Control", "no-store, no-cache, must-revalidate, private");
+        res.set_header("Pragma", "no-cache");
+        res.set_header("X-Content-Type-Options", "nosniff");
+        res.set_header("Referrer-Policy", "no-referrer");
     });
 
     svr.Options(R"(.*)", [](const httplib::Request&, httplib::Response& res) {
-        res.status = 200;
+        res.status = 204;
     });
 
     // --- Serve SPA at root ---
     svr.Get("/", [](const httplib::Request&, httplib::Response& res) {
+        // Restrictive CSP: inline scripts/styles are required because the SPA is a
+        // single-file HTML blob. Network fetches are restricted to localhost (own
+        // origin) plus api.github.com for the opt-in update check. Images are
+        // limited to data: URIs (no remote trackers, no DuckDuckGo favicons here
+        // since this is the standalone SPA, not the Bitwarden extension).
+        res.set_header("Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' https://api.github.com; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'");
+        res.set_header("X-Frame-Options", "DENY");
+        res.set_header("X-Content-Type-Options", "nosniff");
+        res.set_header("Referrer-Policy", "no-referrer");
+        res.set_header("Cache-Control", "no-store");
         res.set_content(VAULTBOX_SPA_HTML, "text/html; charset=utf-8");
     });
     svr.Get("/alive", [](const httplib::Request&, httplib::Response& res) { res.status = 200; });
@@ -44,20 +114,57 @@ inline void setup_routes(httplib::Server& svr) {
         DB db;
         auto rows = db.query("SELECT email FROM accounts LIMIT 1", {});
         if (!rows.empty()) email = rows[0]["email"].get<std::string>();
-        send_json(res, {{"unlocked", g_vault.unlocked}, {"email", email}, {"version", APP_VERSION}});
+        send_json(res, {{"unlocked", g_vault.unlocked.load()}, {"email", email}, {"version", APP_VERSION}});
     });
 
     // --- Unlock ---
+    // Unlock is the only place an attacker (e.g. a malicious Chrome extension that
+    // somehow got past the CORS filter, or another local process) can guess the
+    // master password. PBKDF2 with 600K iterations already provides ~150ms of
+    // work per attempt, but adding a short lockout after repeated failures
+    // degrades an online brute force to near-useless without hurting a legitimate
+    // user who typos once or twice.
     svr.Post("/api/vaultbox/unlock", [](const httplib::Request& req, httplib::Response& res) {
+        static std::mutex lk_mtx;
+        static int consecutive_failures = 0;
+        static std::chrono::steady_clock::time_point lockout_until{};
+
         auto body = parse_body(req);
-        std::string email = body.value("email", "");
+        std::string email = to_lower(trim(body.value("email", "")));
         std::string password = body.value("password", "");
         if (email.empty() || password.empty()) {
             send_error(res, 400, "Email and password required"); return;
         }
-        if (VBCrypto::unlock_vault(password, email)) {
-            send_json(res, {{"success", true}, {"entries", (int)g_vault.entries.size()}, {"folders", (int)g_vault.folders.size()}});
+
+        {
+            std::lock_guard<std::mutex> g(lk_mtx);
+            auto now = std::chrono::steady_clock::now();
+            if (now < lockout_until) {
+                auto secs = std::chrono::duration_cast<std::chrono::seconds>(lockout_until - now).count();
+                send_error(res, 429, "Too many failed attempts. Try again in " + std::to_string(secs + 1) + "s.");
+                return;
+            }
+        }
+
+        bool ok = VBCrypto::unlock_vault(password, email);
+
+        std::lock_guard<std::mutex> g(lk_mtx);
+        if (ok) {
+            consecutive_failures = 0;
+            lockout_until = {};
+            std::lock_guard<std::mutex> vl(g_vault.mtx);
+            send_json(res, {{"success", true},
+                            {"entries", (int)g_vault.entries.size()},
+                            {"folders", (int)g_vault.folders.size()}});
         } else {
+            consecutive_failures++;
+            // Exponential-ish backoff once we've had more than 3 failures in a row.
+            if (consecutive_failures >= 4) {
+                int secs = std::min(60, 2 << std::min(consecutive_failures - 4, 5));
+                lockout_until = std::chrono::steady_clock::now() + std::chrono::seconds(secs);
+                vb_log("Unlock lockout engaged: " + std::to_string(secs) + "s after "
+                       + std::to_string(consecutive_failures) + " failed attempts");
+            }
             send_error(res, 401, "Invalid master password or account not found");
         }
     });
@@ -221,10 +328,13 @@ inline void setup_routes(httplib::Server& svr) {
         else if (type == "chrome_csv") count = VBImport::import_chrome_csv(tempFile.string());
         else if (type == "keepass_xml") count = VBImport::import_keepass_xml(tempFile.string());
 
-        fs::remove(tempFile);
+        std::error_code ec;
+        fs::remove(tempFile, ec);
 
         if (count >= 0) {
             send_json(res, {{"success", true}, {"count", count}});
+        } else if (count == -2) {
+            send_error(res, 400, "Encrypted Bitwarden exports are not supported. Re-export unencrypted and try again.");
         } else {
             send_error(res, 400, "Import failed or unsupported format");
         }
@@ -279,8 +389,18 @@ inline void setup_routes(httplib::Server& svr) {
     });
     svr.Post("/api/vaultbox/security", [](const httplib::Request& req, httplib::Response& res) {
         auto body = parse_body(req);
-        if (body.contains("autoLockMinutes")) set_autolock_minutes(body["autoLockMinutes"].get<int>());
-        if (body.contains("clipboardClearSeconds")) set_clipboard_clear_seconds(body["clipboardClearSeconds"].get<int>());
+        if (body.contains("autoLockMinutes") && body["autoLockMinutes"].is_number()) {
+            int v = body["autoLockMinutes"].get<int>();
+            if (v < 0) v = 0;
+            if (v > 24 * 60) v = 24 * 60; // cap at 24 hours
+            set_autolock_minutes(v);
+        }
+        if (body.contains("clipboardClearSeconds") && body["clipboardClearSeconds"].is_number()) {
+            int v = body["clipboardClearSeconds"].get<int>();
+            if (v < 0) v = 0;
+            if (v > 3600) v = 3600; // cap at 1 hour
+            set_clipboard_clear_seconds(v);
+        }
         send_json(res, {
             {"autoLockMinutes", get_autolock_minutes()},
             {"clipboardClearSeconds", get_clipboard_clear_seconds()}
@@ -352,14 +472,28 @@ inline void setup_routes(httplib::Server& svr) {
     svr.Post("/api/vaultbox/vaults/switch", [](const httplib::Request& req, httplib::Response& res) {
         auto body = parse_body(req);
         std::string file = body.value("file", "");
-        if (file.empty() || file.find("..") != std::string::npos || file.find('/') != std::string::npos || file.find('\\') != std::string::npos) {
+        if (file.empty() || file.find("..") != std::string::npos
+            || file.find('/') != std::string::npos || file.find('\\') != std::string::npos
+            || file.find(':') != std::string::npos || file.find('\0') != std::string::npos) {
             send_error(res, 400, "Invalid vault file name"); return;
         }
         fs::path newPath = g_data_dir / file;
         if (!newPath.has_extension() || newPath.extension() != ".db") newPath += ".db";
-        g_vault.clear();
-        g_db_path = newPath;
-        init_db(); // Create tables if new vault
+        // Confirm the resolved path is still inside g_data_dir (defence against traversal).
+        std::error_code ec;
+        auto absNew = fs::weakly_canonical(newPath, ec);
+        auto absDir = fs::weakly_canonical(g_data_dir, ec);
+        if (ec || absNew.string().rfind(absDir.string(), 0) != 0) {
+            send_error(res, 400, "Invalid vault path"); return;
+        }
+        try {
+            std::lock_guard<std::mutex> lk(g_vault_switch_mtx);
+            g_vault.clear();
+            g_db_path = newPath;
+            init_db(); // Create tables if new vault
+        } catch (const std::exception& e) {
+            send_error(res, 500, std::string("Failed to switch vault: ") + e.what()); return;
+        }
         vb_log("Switched to vault: " + newPath.filename().string());
         send_json(res, {{"success", true}, {"file", newPath.filename().string()}});
     });
@@ -367,15 +501,22 @@ inline void setup_routes(httplib::Server& svr) {
         auto body = parse_body(req);
         std::string name = body.value("name", "");
         if (name.empty()) { send_error(res, 400, "Vault name required"); return; }
-        // Sanitize name
+        // Sanitize name - allow only filesystem-safe ASCII identifier chars.
         std::string safe;
-        for (char c : name) { if (isalnum(c) || c == '-' || c == '_') safe += c; }
-        if (safe.empty()) safe = "vault";
+        for (char c : name) { if (isalnum((unsigned char)c) || c == '-' || c == '_') safe += c; }
+        if (safe.empty() || safe.size() > 64) {
+            send_error(res, 400, "Vault name must be 1-64 letters/digits/'-'/'_' characters"); return;
+        }
         fs::path newPath = g_data_dir / (safe + ".db");
         if (fs::exists(newPath)) { send_error(res, 400, "Vault already exists"); return; }
-        g_vault.clear();
-        g_db_path = newPath;
-        init_db();
+        try {
+            std::lock_guard<std::mutex> lk(g_vault_switch_mtx);
+            g_vault.clear();
+            g_db_path = newPath;
+            init_db();
+        } catch (const std::exception& e) {
+            send_error(res, 500, std::string("Failed to create vault: ") + e.what()); return;
+        }
         vb_log("Created new vault: " + newPath.filename().string());
         send_json(res, {{"success", true}, {"file", newPath.filename().string()}});
     });
@@ -436,44 +577,74 @@ inline void setup_routes(httplib::Server& svr) {
         send_json(res, json(token));
     });
 
-    svr.Post("/accounts/register/finish", [](const httplib::Request& req, httplib::Response& res) {
+    // Safely extract an optional integer from a JSON body. Returns "" when the
+    // key is missing / null / non-numeric / non-numeric-string so the resulting
+    // SQL bind becomes NULL via NULLIF(?, '').
+    auto opt_int_str = [](const json& body, const char* key) -> std::string {
+        if (!body.contains(key) || body[key].is_null()) return "";
+        try {
+            return std::to_string(to_int(body[key], 0));
+        } catch (...) {
+            return "";
+        }
+    };
+
+    svr.Post("/accounts/register/finish", [opt_int_str](const httplib::Request& req, httplib::Response& res) {
         auto body = parse_body(req);
         std::string email = to_lower(trim(body.value("email", "")));
         std::string hash = body.value("masterPasswordHash", "");
         if (email.empty() || hash.empty()) { send_error(res, 400, "Email and master password are required"); return; }
+        // Basic shape check - reject obvious garbage rather than writing it to the DB.
+        if (email.size() > 320 || email.find('@') == std::string::npos) {
+            send_error(res, 400, "Invalid email address"); return;
+        }
+        if (hash.size() < 20 || hash.size() > 4096) {
+            send_error(res, 400, "Invalid master password hash"); return;
+        }
         std::string uid = generate_uuid(), stamp = generate_uuid(), now = utcnow();
         auto keys = body.value("userAsymmetricKeys", json::object());
         DB db;
         if (!db.query("SELECT id FROM accounts WHERE email=?", {email}).empty()) {
             send_error(res, 400, "A vault already exists. Log in with your master password, or delete vault.db to start fresh."); return;
         }
+        int kdf = to_int(body.value("kdf", 0), 0);
+        int iters = to_int(body.value("kdfIterations", 600000), 600000);
+        if (kdf == 0 && iters < 100000) { send_error(res, 400, "kdfIterations too low"); return; }
         db.run(R"(INSERT INTO accounts (id, email, master_password_hash, master_password_hint,
             security_stamp, key, public_key, encrypted_private_key,
             kdf, kdf_iterations, kdf_memory, kdf_parallelism, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?,''), NULLIF(?,''), ?, ?))",
             {uid, email, hash, body.value("masterPasswordHint", ""),
              stamp, body.value("userSymmetricKey", ""),
              keys.value("publicKey", ""), keys.value("encryptedPrivateKey", ""),
-             std::to_string(body.value("kdf", 0)), std::to_string(body.value("kdfIterations", 600000)),
-             body.contains("kdfMemory") && !body["kdfMemory"].is_null() ? std::to_string(body["kdfMemory"].get<int>()) : "",
-             body.contains("kdfParallelism") && !body["kdfParallelism"].is_null() ? std::to_string(body["kdfParallelism"].get<int>()) : "",
+             std::to_string(kdf), std::to_string(iters),
+             opt_int_str(body, "kdfMemory"), opt_int_str(body, "kdfParallelism"),
              now, now});
         send_json(res, json::object());
         vb_log("New account registered: " + email);
     });
 
     // Legacy registration
-    svr.Post("/accounts/register", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/accounts/register", [opt_int_str](const httplib::Request& req, httplib::Response& res) {
         auto body = parse_body(req);
         std::string email = to_lower(trim(body.value("email", "")));
         std::string hash = body.value("masterPasswordHash", "");
         if (email.empty() || hash.empty()) { send_error(res, 400, "Email and master password are required"); return; }
+        if (email.size() > 320 || email.find('@') == std::string::npos) {
+            send_error(res, 400, "Invalid email address"); return;
+        }
+        if (hash.size() < 20 || hash.size() > 4096) {
+            send_error(res, 400, "Invalid master password hash"); return;
+        }
         std::string uid = generate_uuid(), stamp = generate_uuid(), now = utcnow();
         auto keys = body.value("keys", json::object());
         DB db;
         if (!db.query("SELECT id FROM accounts WHERE email=?", {email}).empty()) {
             send_error(res, 400, "A vault already exists. Log in with your master password, or delete vault.db to start fresh."); return;
         }
+        int kdf = to_int(body.value("kdf", 0), 0);
+        int iters = to_int(body.value("kdfIterations", 600000), 600000);
+        if (kdf == 0 && iters < 100000) { send_error(res, 400, "kdfIterations too low"); return; }
         db.run(R"(INSERT INTO accounts (id, email, master_password_hash, master_password_hint,
             security_stamp, key, public_key, encrypted_private_key,
             kdf, kdf_iterations, kdf_memory, kdf_parallelism, created_at, updated_at)
@@ -481,9 +652,8 @@ inline void setup_routes(httplib::Server& svr) {
             {uid, email, hash, body.value("masterPasswordHint", ""),
              stamp, body.value("key", ""),
              keys.value("publicKey", ""), keys.value("encryptedPrivateKey", ""),
-             std::to_string(body.value("kdf", 0)), std::to_string(body.value("kdfIterations", 600000)),
-             body.contains("kdfMemory") && !body["kdfMemory"].is_null() ? std::to_string(body["kdfMemory"].get<int>()) : "",
-             body.contains("kdfParallelism") && !body["kdfParallelism"].is_null() ? std::to_string(body["kdfParallelism"].get<int>()) : "",
+             std::to_string(kdf), std::to_string(iters),
+             opt_int_str(body, "kdfMemory"), opt_int_str(body, "kdfParallelism"),
              now, now});
         send_json(res, json::object());
         vb_log("New account registered (legacy): " + email);
@@ -503,11 +673,15 @@ inline void setup_routes(httplib::Server& svr) {
         json user;
         if (grant == "refresh_token") {
             DB db;
-            auto trows = db.query("SELECT user_id FROM tokens WHERE refresh_token=?", {data["refresh_token"]});
+            std::string rt = data["refresh_token"];
+            auto trows = db.query("SELECT user_id FROM tokens WHERE refresh_token=?", {rt});
             if (trows.empty()) { send_error(res, 400, "Invalid refresh token"); return; }
             auto urows = db.query("SELECT * FROM accounts WHERE id=?", {trows[0]["user_id"].get<std::string>()});
             if (urows.empty()) { send_error(res, 400, "User not found"); return; }
             user = urows[0];
+            // Rotate: delete the presented refresh token before issuing a new pair.
+            // Prevents unbounded growth of the tokens table and limits replay window.
+            db.run("DELETE FROM tokens WHERE refresh_token=?", {rt});
         } else if (grant == "password") {
             std::string email = to_lower(trim(data["username"]));
             std::string pw = data["password"];
@@ -604,11 +778,17 @@ inline void setup_routes(httplib::Server& svr) {
         auto user = get_current_user(req, res);
         if (user.is_null()) return;
         auto body = parse_body(req);
+        int kdf = body.value("kdf", (int)user.value("kdf", (int64_t)0));
+        int iters = body.value("kdfIterations", (int)user.value("kdf_iterations", (int64_t)600000));
+        // Refuse dangerously weak KDF parameters. PBKDF2 (kdf=0) lower bound mirrors
+        // Bitwarden server-side validation; Argon2id (kdf=1) iterations are small
+        // numbers but must not be zero/negative.
+        if (kdf == 0 && iters < 100000) { send_error(res, 400, "kdfIterations too low"); return; }
+        if (kdf == 1 && (iters < 2 || iters > 100)) { send_error(res, 400, "kdfIterations out of range"); return; }
         std::string uid = user["id"].get<std::string>();
         DB db;
         db.run("UPDATE accounts SET kdf=?, kdf_iterations=?, kdf_memory=NULLIF(?,''), kdf_parallelism=NULLIF(?,''), key=?, master_password_hash=?, updated_at=? WHERE id=?",
-            {std::to_string(body.value("kdf", (int)user.value("kdf",(int64_t)0))),
-             std::to_string(body.value("kdfIterations", (int)user.value("kdf_iterations",(int64_t)600000))),
+            {std::to_string(kdf), std::to_string(iters),
              body.contains("kdfMemory") && !body["kdfMemory"].is_null() ? std::to_string(body["kdfMemory"].get<int>()) : "",
              body.contains("kdfParallelism") && !body["kdfParallelism"].is_null() ? std::to_string(body["kdfParallelism"].get<int>()) : "",
              body.value("key", user.value("key", std::string(""))),
@@ -690,29 +870,41 @@ inline void setup_routes(httplib::Server& svr) {
         auto ciphers_data = body.value("ciphers", json::array());
         auto rels = body.value("folderRelationships", json::array());
         std::map<int, std::string> folder_map;
-        DB db;
-        for (int i = 0; i < (int)folders_data.size(); i++) {
-            std::string fid = generate_uuid();
-            folder_map[i] = fid;
-            db.run("INSERT INTO folders (id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                {fid, uid, folders_data[i].value("name",""), now, now});
-        }
         std::map<int, int> cfmap;
         for (auto& r : rels) {
-            int k = r.contains("key") ? r["key"].get<int>() : r.value("Key", -1);
-            int v = r.contains("value") ? r["value"].get<int>() : r.value("Value", -1);
-            cfmap[k] = v;
+            int k = r.contains("key") && r["key"].is_number() ? r["key"].get<int>() : r.value("Key", -1);
+            int v = r.contains("value") && r["value"].is_number() ? r["value"].get<int>() : r.value("Value", -1);
+            if (k >= 0) cfmap[k] = v;
         }
-        for (int i = 0; i < (int)ciphers_data.size(); i++) {
-            auto& c = ciphers_data[i];
-            std::string cid = generate_uuid();
-            std::string fid = "";
-            if (cfmap.count(i) && folder_map.count(cfmap[i])) fid = folder_map[cfmap[i]];
-            std::string ct = std::to_string(c.value("type", 1));
-            std::string fav = c.value("favorite", false) ? "1" : "0";
-            std::string rep = std::to_string(c.value("reprompt", 0));
-            db.run("INSERT INTO ciphers (id, user_id, folder_id, organization_id, type, data, favorite, reprompt, created_at, updated_at) VALUES (?, ?, NULLIF(?,''), NULL, ?, ?, ?, ?, ?, ?)",
-                {cid, uid, fid, ct, extract_cipher_data(c).dump(), fav, rep, now, now});
+
+        DB db;
+        // Wrap the whole import in one transaction: ~100x faster for large
+        // imports (no fsync per row) and atomic on failure - a partial crash
+        // won't leave the user with half a vault.
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            for (int i = 0; i < (int)folders_data.size(); i++) {
+                std::string fid = generate_uuid();
+                folder_map[i] = fid;
+                db.run("INSERT INTO folders (id, user_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    {fid, uid, folders_data[i].value("name",""), now, now});
+            }
+            for (int i = 0; i < (int)ciphers_data.size(); i++) {
+                auto& c = ciphers_data[i];
+                std::string cid = generate_uuid();
+                std::string fid = "";
+                if (cfmap.count(i) && folder_map.count(cfmap[i])) fid = folder_map[cfmap[i]];
+                std::string ct = std::to_string(c.value("type", 1));
+                std::string fav = c.value("favorite", false) ? "1" : "0";
+                std::string rep = std::to_string(c.value("reprompt", 0));
+                db.run("INSERT INTO ciphers (id, user_id, folder_id, organization_id, type, data, favorite, reprompt, created_at, updated_at) VALUES (?, ?, NULLIF(?,''), NULL, ?, ?, ?, ?, ?, ?)",
+                    {cid, uid, fid, ct, extract_cipher_data(c).dump(), fav, rep, now, now});
+            }
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            send_error(res, 500, "Import failed; no changes were made");
+            return;
         }
         res.status = 200;
         vb_log("Import: " + std::to_string(ciphers_data.size()) + " ciphers, " + std::to_string(folders_data.size()) + " folders");
@@ -838,8 +1030,16 @@ inline void setup_routes(httplib::Server& svr) {
         if (user.is_null()) return;
         std::string fid = req.matches[1].str(), uid = user["id"].get<std::string>();
         DB db;
-        db.run("UPDATE ciphers SET folder_id=NULL, updated_at=? WHERE folder_id=? AND user_id=?", {utcnow(), fid, uid});
-        db.run("DELETE FROM folders WHERE id=? AND user_id=?", {fid, uid});
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            db.run("UPDATE ciphers SET folder_id=NULL, updated_at=? WHERE folder_id=? AND user_id=?", {utcnow(), fid, uid});
+            db.run("DELETE FROM folders WHERE id=? AND user_id=?", {fid, uid});
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            send_error(res, 500, "Failed to delete folder");
+            return;
+        }
         res.status = 200;
     });
 
@@ -894,10 +1094,20 @@ inline void setup_routes(httplib::Server& svr) {
         }
         std::string uid = user["id"].get<std::string>();
         DB db;
-        db.run("DELETE FROM ciphers WHERE user_id=?", {uid});
-        db.run("DELETE FROM folders WHERE user_id=?", {uid});
-        db.run("DELETE FROM tokens WHERE user_id=?", {uid});
-        db.run("DELETE FROM accounts WHERE id=?", {uid});
+        db.exec("BEGIN IMMEDIATE");
+        try {
+            db.run("DELETE FROM ciphers WHERE user_id=?", {uid});
+            db.run("DELETE FROM folders WHERE user_id=?", {uid});
+            db.run("DELETE FROM tokens WHERE user_id=?", {uid});
+            db.run("DELETE FROM accounts WHERE id=?", {uid});
+            db.exec("COMMIT");
+        } catch (...) {
+            db.exec("ROLLBACK");
+            send_error(res, 500, "Failed to delete account"); return;
+        }
+        // Clear the in-memory vault state too - the user just asked us to wipe
+        // everything, there's nothing left to be unlocked.
+        g_vault.clear();
         res.status = 200;
         vb_log("Account deleted: " + user["email"].get<std::string>());
     };
@@ -919,7 +1129,14 @@ inline void setup_routes(httplib::Server& svr) {
     });
 
     svr.set_error_handler([](const httplib::Request& req, httplib::Response& res) {
+        // Only silently-swallow 404s on the Bitwarden-compatible API surface,
+        // where the Angular extension hits optional endpoints we don't implement
+        // (organizations, sends, auth-requests, etc.). Never swallow 404s on
+        // /api/vaultbox/* - a typo or removed endpoint in the SPA should surface
+        // as a real error so we don't ship a broken UI that silently appears fine.
         if (res.status == 404) {
+            const std::string& p = req.path;
+            if (p.rfind("/api/vaultbox/", 0) == 0 || p == "/api/vaultbox") return;
             res.status = 200;
             if (req.method == "GET")
                 res.set_content(R"({"object":"list","data":[],"continuationToken":null})", "application/json");

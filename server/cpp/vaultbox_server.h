@@ -1,4 +1,4 @@
-// VaultBox Desktop v0.5.0 - Shared Types & Utilities
+// VaultBox Desktop v0.9.0 - Shared Types & Utilities
 #pragma once
 
 #ifndef UNICODE
@@ -27,6 +27,7 @@
 #include <windowsx.h>
 #include <commdlg.h>
 #include <objbase.h>
+#include <wtsapi32.h>
 
 #undef DELETE
 #undef min
@@ -43,6 +44,7 @@
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "wtsapi32.lib")
 #pragma comment(linker, "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
 
 #include <string>
@@ -72,7 +74,7 @@ namespace fs = std::filesystem;
 // ============================================================================
 // Version & Config
 // ============================================================================
-static const char* APP_VERSION = "0.7.0";
+static const char* APP_VERSION = "0.9.0";
 static const char* HOST = "127.0.0.1";
 static const int PORT = 8787;
 static const int TOKEN_EXPIRY_HOURS = 24 * 30;
@@ -88,6 +90,25 @@ inline httplib::Server* g_server = nullptr;
 inline HWND g_main_hwnd = nullptr;
 inline NOTIFYICONDATAW g_nid = {};
 inline bool g_portable_mode = false;
+
+// Serializes mutations of vault-global state (g_db_path / g_jwt_secret) during
+// vault switch/create. Reader endpoints only need a snapshot of g_db_path which
+// is taken during DB construction, so taking this mutex during path swaps is
+// sufficient to avoid races with concurrent requests.
+inline std::mutex g_vault_switch_mtx;
+
+// Last time any authenticated/vault-touching request came in, in monotonic seconds.
+// Used by the server-side auto-lock watchdog as a backstop for the JS timer.
+inline std::atomic<int64_t> g_last_activity_s{0};
+
+inline int64_t monotonic_seconds() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+inline void touch_activity() {
+    g_last_activity_s = monotonic_seconds();
+}
 
 // Decrypted vault state
 struct DecryptedEntry {
@@ -111,7 +132,10 @@ struct DecryptedFolder {
 };
 
 struct VaultState {
-    bool unlocked = false;
+    // Atomic so callers that only want to know "is the vault unlocked?"
+    // (status endpoint, quick gate checks in write endpoints) can read it
+    // without holding mtx. Writers set this flag while mtx is held.
+    std::atomic<bool> unlocked{false};
     std::string userId;
     std::string email;
     std::vector<uint8_t> userEncKey; // 32 bytes
@@ -128,7 +152,7 @@ struct VaultState {
         userMacKey.clear();
         entries.clear();
         folders.clear();
-        unlocked = false;
+        unlocked.store(false);
         userId.clear();
         email.clear();
     }
@@ -136,7 +160,9 @@ struct VaultState {
 
 inline VaultState g_vault;
 
-// Log queue
+// Log queue. Bounded so that a closed SPA (which drains the queue by polling)
+// doesn't cause memory growth forever. Older messages are dropped first.
+static const size_t LOG_QUEUE_MAX = 512;
 inline std::mutex g_log_mtx;
 inline std::queue<std::string> g_log_queue;
 
@@ -147,10 +173,9 @@ inline void vb_log(const std::string& msg) {
     localtime_s(&tm, &tt);
     char buf[128];
     snprintf(buf, sizeof(buf), "[%02d:%02d:%02d] ", tm.tm_hour, tm.tm_min, tm.tm_sec);
-    {
-        std::lock_guard<std::mutex> lk(g_log_mtx);
-        g_log_queue.push(std::string(buf) + msg);
-    }
+    std::lock_guard<std::mutex> lk(g_log_mtx);
+    g_log_queue.push(std::string(buf) + msg);
+    while (g_log_queue.size() > LOG_QUEUE_MAX) g_log_queue.pop();
 }
 
 // ============================================================================
@@ -416,10 +441,11 @@ inline bool set_auto_backup(bool enable) {
 
 inline void wal_checkpoint() {
     sqlite3* db = nullptr;
-    if (sqlite3_open(g_db_path.string().c_str(), &db) == SQLITE_OK) {
+    int rc = sqlite3_open(g_db_path.string().c_str(), &db);
+    if (rc == SQLITE_OK && db) {
         sqlite3_wal_checkpoint_v2(db, nullptr, SQLITE_CHECKPOINT_TRUNCATE, nullptr, nullptr);
-        sqlite3_close(db);
     }
+    if (db) sqlite3_close(db); // sqlite3_open can return a handle even on failure
 }
 
 inline json do_backup_now() {
@@ -475,11 +501,30 @@ inline std::string get_last_backup_time() {
     return from_wstr(buf);
 }
 
-// Trigger auto-backup after vault changes (call from write endpoints)
+// Trigger auto-backup after vault changes. Debounced: multiple writes in quick
+// succession (e.g. an import adding 500 entries) coalesce into a single backup
+// run ~3s after the last write, instead of spawning one thread per write.
+inline std::mutex g_auto_backup_mtx;
+inline std::atomic<bool> g_auto_backup_pending{false};
+inline std::atomic<int64_t> g_auto_backup_last_request{0};
+
 inline void trigger_auto_backup() {
-    if (get_auto_backup() && !get_backup_path().empty()) {
-        std::thread([]() { do_backup_now(); }).detach();
-    }
+    if (!get_auto_backup() || get_backup_path().empty()) return;
+    g_auto_backup_last_request = current_timestamp();
+    bool expected = false;
+    if (!g_auto_backup_pending.compare_exchange_strong(expected, true)) return;
+    std::thread([]() {
+        // Debounce window: wait until 3s have elapsed since the last request.
+        for (;;) {
+            int64_t deadline = g_auto_backup_last_request.load() + 3;
+            int64_t now = current_timestamp();
+            if (now >= deadline) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        std::lock_guard<std::mutex> lk(g_auto_backup_mtx);
+        g_auto_backup_pending = false;
+        do_backup_now();
+    }).detach();
 }
 
 // Auto-lock timeout (minutes, 0 = disabled)
