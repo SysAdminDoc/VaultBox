@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  VaultBox Chrome extension auto-update manifest.
+
+  Used for enterprise force-install via Chrome's ExtensionInstallForcelist
+  policy. The extension ID is derived from the CRX signing key in
+  apps/browser/build.pem and stays stable across releases.
+
+  Drag-and-drop install of the CRX is blocked by Chrome since 2018 ("Package
+  is invalid: CRX_REQUIRED_PROOF_MISSING") because Chrome only accepts CRXs
+  carrying a Web Store publisher signature. The two supported off-store
+  install paths are (a) "Load unpacked" from VaultBox-chrome.zip, or (b)
+  ExtensionInstallForcelist + this update XML. See README for both.
+
+  When cutting a new release, update both the `version=` attribute below
+  and the `codebase=` URL to point at the new CRX asset.
+-->
+<gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
+  <app appid="okcphajlkgdmhpimcbdkcmgpibkigamb">
+    <updatecheck
+      codebase="https://github.com/SysAdminDoc/VaultBox/releases/download/extension-v0.10.0/VaultBox-chrome.crx"
+      version="0.10.0" />
+  </app>
+</gupdate>
