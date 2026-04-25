@@ -71,74 +71,84 @@ export class OfflineSyncService implements SyncService {
   /**
    * In offline mode, fullSync is a no-op that just updates the last sync date.
    * All vault data is already in local state (loaded via file import).
+   *
+   * Concurrent calls share the in-flight promise so the local sync date is
+   * never written twice for a single trigger and downstream listeners only
+   * see one `syncCompleted` message per logical sync.
    */
+  private inFlight: Promise<boolean> | null = null;
+
   async fullSync(
-    forceSync: boolean,
-    allowThrowOnErrorOrOptions?: boolean | SyncOptions,
+    _forceSync: boolean,
+    _allowThrowOnErrorOrOptions?: boolean | SyncOptions,
   ): Promise<boolean> {
-    this.syncInProgress = true;
-
-    try {
-      const userId = await firstValueFrom(
-        this.accountService.activeAccount$.pipe(map((a) => a?.id)),
-      );
-
-      if (userId == null) {
-        this.logService.info("[VaultBox Offline] No active user, skipping sync.");
-        this.syncInProgress = false;
-        return false;
-      }
-
-      const authStatus = await firstValueFrom(this.authService.authStatusFor$(userId));
-      if (authStatus === AuthenticationStatus.LoggedOut) {
-        this.logService.info("[VaultBox Offline] User logged out, skipping sync.");
-        this.syncInProgress = false;
-        return false;
-      }
-
-      // Mark as synced - vault data is already local
-      await this.setLastSync(new Date(), userId);
-      this.logService.info("[VaultBox Offline] Local sync completed (no server contact).");
-      this.messageSender.send("syncCompleted", { successfully: true });
-      this.syncInProgress = false;
-      return true;
-    } catch (e) {
-      this.logService.error("[VaultBox Offline] Sync error:", e);
-      this.syncInProgress = false;
-      return false;
+    if (this.inFlight != null) {
+      return this.inFlight;
     }
+    this.syncInProgress = true;
+    this.inFlight = (async () => {
+      try {
+        const userId = await firstValueFrom(
+          this.accountService.activeAccount$.pipe(map((a) => a?.id)),
+        );
+
+        if (userId == null) {
+          this.logService.info("[VaultBox Offline] No active user, skipping sync.");
+          return false;
+        }
+
+        const authStatus = await firstValueFrom(this.authService.authStatusFor$(userId));
+        if (authStatus === AuthenticationStatus.LoggedOut) {
+          this.logService.info("[VaultBox Offline] User logged out, skipping sync.");
+          return false;
+        }
+
+        // Mark as synced - vault data is already local
+        await this.setLastSync(new Date(), userId);
+        this.logService.info("[VaultBox Offline] Local sync completed (no server contact).");
+        this.messageSender.send("syncCompleted", { successfully: true });
+        return true;
+      } catch (e) {
+        this.logService.error("[VaultBox Offline] Sync error:", e);
+        return false;
+      } finally {
+        this.syncInProgress = false;
+        this.inFlight = null;
+      }
+    })();
+    return this.inFlight;
   }
 
   // Notification-based sync methods are no-ops in offline mode
   async syncUpsertFolder(
-    notification: SyncFolderNotification,
-    isEdit: boolean,
-    userId: UserId,
+    _notification: SyncFolderNotification,
+    _isEdit: boolean,
+    _userId: UserId,
   ): Promise<boolean> {
     return true;
   }
 
-  async syncDeleteFolder(notification: SyncFolderNotification, userId: UserId): Promise<boolean> {
+  async syncDeleteFolder(_notification: SyncFolderNotification, _userId: UserId): Promise<boolean> {
     return true;
   }
 
   async syncUpsertCipher(
-    notification: SyncCipherNotification,
-    isEdit: boolean,
-    userId: UserId,
+    _notification: SyncCipherNotification,
+    _isEdit: boolean,
+    _userId: UserId,
   ): Promise<boolean> {
     return true;
   }
 
-  async syncDeleteCipher(notification: SyncFolderNotification, userId: UserId): Promise<boolean> {
+  async syncDeleteCipher(_notification: SyncFolderNotification, _userId: UserId): Promise<boolean> {
     return true;
   }
 
-  async syncUpsertSend(notification: SyncSendNotification, isEdit: boolean): Promise<boolean> {
+  async syncUpsertSend(_notification: SyncSendNotification, _isEdit: boolean): Promise<boolean> {
     return true;
   }
 
-  async syncDeleteSend(notification: SyncSendNotification): Promise<boolean> {
+  async syncDeleteSend(_notification: SyncSendNotification): Promise<boolean> {
     return true;
   }
 }

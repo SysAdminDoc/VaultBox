@@ -61,6 +61,10 @@ export interface VaultBoxEncryptedData {
   policies: any[];
 }
 
+// 64 MiB matches the server-side payload cap; anything larger is almost
+// certainly garbage being fed into the importer.
+const MAX_VAULT_FILE_BYTES = 64 * 1024 * 1024;
+
 export class VaultFileManager {
   private fileHandle: FileSystemFileHandle | null = null;
 
@@ -72,7 +76,10 @@ export class VaultFileManager {
     const blob = new Blob([json], { type: "application/json" });
     const filename = `vaultbox-${new Date().toISOString().slice(0, 10)}.vaultbox`;
 
-    // Try File System Access API first (allows saving to external drives)
+    // Try File System Access API first (allows saving to external drives).
+    // Note: chrome.downloads is preferred over FSA inside extension popups because
+    // popup pages do not always have user-activation when this is invoked, but
+    // FSA exposes write-anywhere semantics that the downloads API cannot.
     if (this.supportsFileSystemAccess()) {
       try {
         const handle = await (globalThis as any).showSaveFilePicker({
@@ -85,36 +92,54 @@ export class VaultFileManager {
           ],
         });
         const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
+        try {
+          await writable.write(blob);
+        } finally {
+          await writable.close();
+        }
         this.fileHandle = handle;
         return;
       } catch (e: any) {
-        if (e.name === "AbortError") {
-          return; // User cancelled
+        if (e?.name === "AbortError" || e?.name === "NotAllowedError") {
+          return; // User cancelled or no user activation — don't fall through to a second prompt
         }
-        // Fall through to download API
+        // Other failures fall through to the chrome.downloads / anchor fallback.
       }
     }
 
-    // Fallback: use chrome.downloads API
-    const url = URL.createObjectURL(blob);
-    try {
-      if (typeof chrome !== "undefined" && chrome.downloads) {
+    // Fallback: use chrome.downloads API where available.
+    if (typeof chrome !== "undefined" && chrome.downloads?.download) {
+      const url = URL.createObjectURL(blob);
+      try {
         await chrome.downloads.download({
           url: url,
           filename: filename,
           saveAs: true,
         });
-      } else {
-        // Final fallback: create download link
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
+      } finally {
+        // Keep the URL alive until the browser has read the blob.
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+      return;
+    }
+
+    // Final fallback: anchor-based download. Must be appended to the DOM in
+    // some Chromium versions for `.click()` to actually trigger a download.
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      try {
         a.click();
+      } finally {
+        a.remove();
       }
     } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }
   }
 
@@ -135,32 +160,76 @@ export class VaultFileManager {
           ],
           multiple: false,
         });
+        if (!handle) {
+          return null;
+        }
         const file = await handle.getFile();
+        // Reject obviously oversized files before reading them into memory.
+        if (file.size > MAX_VAULT_FILE_BYTES) {
+          // eslint-disable-next-line no-console -- VaultBox: surface bad import to dev console
+          console.error(
+            `[VaultBox] Vault file rejected: ${file.size} bytes exceeds ${MAX_VAULT_FILE_BYTES} byte limit.`,
+          );
+          return null;
+        }
         const text = await file.text();
         this.fileHandle = handle;
         return this.parseAndValidate(text);
       } catch (e: any) {
-        if (e.name === "AbortError") {
-          return null; // User cancelled
+        if (e?.name === "AbortError" || e?.name === "NotAllowedError") {
+          return null; // User cancelled or no user activation
         }
         // Fall through to input element
       }
     }
 
-    // Fallback: use file input element
+    // Fallback: file input element. Some browsers do not fire `change` on
+    // detached inputs that were never activated by user gesture, so we attach
+    // the input to the DOM, listen for both `change` and `cancel`, and
+    // guarantee resolution so callers never hang.
     return new Promise((resolve) => {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = ".vaultbox,.json";
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) {
-          resolve(null);
+      input.accept = ".vaultbox,.json,application/json";
+      input.style.display = "none";
+
+      let settled = false;
+      const settle = (value: VaultBoxFile | null) => {
+        if (settled) {
           return;
         }
-        const text = await file.text();
-        resolve(this.parseAndValidate(text));
+        settled = true;
+        input.remove();
+        resolve(value);
       };
+
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) {
+          settle(null);
+          return;
+        }
+        if (file.size > MAX_VAULT_FILE_BYTES) {
+          // eslint-disable-next-line no-console -- VaultBox: surface bad import to dev console
+          console.error(
+            `[VaultBox] Vault file rejected: ${file.size} bytes exceeds ${MAX_VAULT_FILE_BYTES} byte limit.`,
+          );
+          settle(null);
+          return;
+        }
+        try {
+          const text = await file.text();
+          settle(this.parseAndValidate(text));
+        } catch (e) {
+          // eslint-disable-next-line no-console -- VaultBox: surface bad import to dev console
+          console.error("[VaultBox] Vault file read failed:", e);
+          settle(null);
+        }
+      });
+      // Browsers expose `cancel` on file inputs (Chromium 113+, Firefox 91+).
+      input.addEventListener("cancel", () => settle(null));
+
+      document.body.appendChild(input);
       input.click();
     });
   }
@@ -174,6 +243,7 @@ export class VaultFileManager {
       return false;
     }
 
+    let writable: FileSystemWritableFileStream | null = null;
     try {
       // Verify we still have permission
       const permission = await (this.fileHandle as any).queryPermission({ mode: "readwrite" });
@@ -186,12 +256,22 @@ export class VaultFileManager {
       }
 
       const json = JSON.stringify(vaultData, null, 2);
-      const writable = await this.fileHandle.createWritable();
+      writable = await this.fileHandle.createWritable();
       await writable.write(json);
       await writable.close();
+      writable = null;
       return true;
     } catch {
       this.fileHandle = null;
+      // Best-effort: ensure the writable stream is released even on failure
+      // so the underlying file does not stay locked across renderer reloads.
+      if (writable) {
+        try {
+          await writable.abort();
+        } catch {
+          // already aborted / closed
+        }
+      }
       return false;
     }
   }
@@ -204,36 +284,67 @@ export class VaultFileManager {
   }
 
   private parseAndValidate(text: string): VaultBoxFile | null {
+    let data: any;
     try {
-      const data = JSON.parse(text);
-
-      if (data.format !== "vaultbox-offline-vault") {
-        throw new Error(
-          "Invalid vault file format. Expected 'vaultbox-offline-vault' format identifier.",
-        );
-      }
-
-      if (!data.version || data.version > 1) {
-        throw new Error(`Unsupported vault file version: ${data.version}`);
-      }
-
-      if (!data.account || !data.encryptedData) {
-        throw new Error("Vault file is missing required account or encryptedData sections.");
-      }
-
-      if (!data.encryptedData.userKey) {
-        throw new Error("Vault file is missing the encrypted user key.");
-      }
-
-      return data as VaultBoxFile;
+      data = JSON.parse(text);
     } catch (e: any) {
       // eslint-disable-next-line no-console -- VaultBox: File validation error reporting
-      console.error("[VaultBox] Failed to parse vault file:", e.message);
+      console.error("[VaultBox] Failed to parse vault file as JSON:", e?.message ?? e);
       return null;
     }
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      // eslint-disable-next-line no-console -- VaultBox: File validation error reporting
+      console.error("[VaultBox] Vault file must be a JSON object.");
+      return null;
+    }
+
+    if (data.format !== "vaultbox-offline-vault") {
+      // eslint-disable-next-line no-console -- VaultBox: File validation error reporting
+      console.error(
+        "[VaultBox] Invalid vault file format. Expected 'vaultbox-offline-vault' format identifier.",
+      );
+      return null;
+    }
+
+    if (typeof data.version !== "number" || !Number.isFinite(data.version) || data.version > 1) {
+      // eslint-disable-next-line no-console -- VaultBox: File validation error reporting
+      console.error(`[VaultBox] Unsupported vault file version: ${data.version}`);
+      return null;
+    }
+
+    if (
+      data.account == null ||
+      typeof data.account !== "object" ||
+      data.encryptedData == null ||
+      typeof data.encryptedData !== "object"
+    ) {
+      // eslint-disable-next-line no-console -- VaultBox: File validation error reporting
+      console.error("[VaultBox] Vault file is missing required account or encryptedData sections.");
+      return null;
+    }
+
+    if (typeof data.encryptedData.userKey !== "string" || data.encryptedData.userKey.length === 0) {
+      // eslint-disable-next-line no-console -- VaultBox: File validation error reporting
+      console.error("[VaultBox] Vault file is missing the encrypted user key.");
+      return null;
+    }
+
+    // Defensive defaults so consumers never read undefined arrays.
+    for (const key of ["ciphers", "folders", "collections", "sends", "policies"] as const) {
+      if (!Array.isArray(data.encryptedData[key])) {
+        data.encryptedData[key] = [];
+      }
+    }
+
+    return data as VaultBoxFile;
   }
 
   private supportsFileSystemAccess(): boolean {
-    return typeof globalThis !== "undefined" && "showOpenFilePicker" in globalThis;
+    return (
+      typeof globalThis !== "undefined" &&
+      typeof (globalThis as any).showOpenFilePicker === "function" &&
+      typeof (globalThis as any).showSaveFilePicker === "function"
+    );
   }
 }

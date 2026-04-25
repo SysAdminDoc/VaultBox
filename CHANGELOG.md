@@ -2,6 +2,70 @@
 
 All notable changes to bitwarden-offline will be documented in this file.
 
+## [extension-v0.10.0] - 2026-04-25
+
+Browser-extension hardening pass. C++ server stays at v0.9.0; only the
+Chrome/Firefox extension version was bumped (manifest `0.8.4 → 0.10.0`).
+
+### Reliability
+
+- `VaultFileManager.exportToFile` no longer leaks blob URLs or fails silently when
+  the File System Access API is partially supported. The fallback now (a) prefers
+  `chrome.downloads.download`, (b) falls back to an in-DOM anchor that is
+  appended/`.click()`/removed in a single tick (some Chromium versions ignore
+  `.click()` on detached anchors), and (c) extends `URL.revokeObjectURL` to 60 s
+  so slow disks don't race the cleanup.
+- `VaultFileManager.importFromFile` always settles its Promise. The previous
+  fallback used an unattached `<input type=file>` with no `cancel` listener, so
+  callers could hang forever if the user dismissed the picker. The new
+  implementation listens for both `change` and `cancel`, attaches the input
+  briefly to the DOM, removes it on settle, and rejects oversized files
+  (> 64 MiB) before reading them into memory.
+- `VaultFileManager.parseAndValidate` no longer throws-and-catches for control
+  flow; it now returns `null` with a single console.error for each distinct
+  validation failure, rejects non-objects/arrays at the root, type-checks
+  `version` as a finite number, and back-fills missing array buckets so
+  consumers never read `undefined` for `ciphers/folders/...`.
+- `VaultFileManager.quickSave` aborts the writable stream on failure so the
+  underlying file is not left locked across renderer reloads.
+- `VaultFileManager.supportsFileSystemAccess` now requires *both*
+  `showOpenFilePicker` and `showSaveFilePicker` (Firefox exposes neither today;
+  the previous check could be tricked by polyfills that only stub one).
+
+### Security / correctness
+
+- `buildVaultExport` no longer scans `chrome.storage.local` with naive
+  `key.includes(userId)` matching. Bitwarden's StateProvider scopes per-user
+  state with the exact prefix `user_<userId>_`; we now key off that prefix
+  and dispatch on the bucket *segment* rather than substring contains. This
+  prevents (a) cross-user contamination when a user-id substring happens to
+  appear inside another user's key, (b) keys like `archived_ciphers_disk`
+  being mis-classified as ciphers, and (c) `userKey = value as string` blindly
+  casting object-shaped state into a string.
+- `getOfflineConfig` and `setOfflineConfig` now check `chrome.runtime.lastError`
+  on every storage callback (Chrome's required acknowledgment to suppress
+  unchecked-error warnings), validate the shape of the returned config object
+  before trusting it, and surface set failures as a rejected Promise instead
+  of swallowing them.
+
+### Concurrency
+
+- `OfflineSyncService.fullSync` is now reentrancy-safe. Concurrent callers
+  share a single in-flight Promise so the local `lastSync` date is written at
+  most once per logical sync and downstream listeners see one
+  `syncCompleted` message instead of one per caller. The `syncInProgress`
+  flag is cleared in a `finally` so it can never get stuck `true` after an
+  exception.
+
+### Maintenance / hygiene
+
+- Unused parameters in offline service shims renamed to `_*` to satisfy the
+  no-unused-vars lint rule without disabling it.
+- `OfflineApiService` documents that it is currently *not* wired into the DI
+  graph (VaultBox uses the standard ApiService talking to 127.0.0.1:8787) so
+  future contributors don't waste time tracing why production never enters
+  these methods.
+
 ## [v0.9.0] - 2026-04-16
 
 ### Security

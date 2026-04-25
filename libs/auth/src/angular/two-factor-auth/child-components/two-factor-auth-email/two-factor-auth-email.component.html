@@ -8,7 +8,7 @@
     autocomplete="one-time-code"
     inputmode="numeric"
     name="verificationCode"
-    spellcheck="false"
+    [spellcheck]="false"
     [formControl]="tokenFormControl"
     (keyup)="onTokenChange($event)"
   />

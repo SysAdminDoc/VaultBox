@@ -3,7 +3,7 @@
   "minimum_chrome_version": "102.0",
   "name": "VaultBox - Offline Password Manager",
   "short_name": "VaultBox",
-  "version": "0.8.4",
+  "version": "0.10.0",
   "description": "Fully offline password manager. Your vault never leaves your device.",
   "default_locale": "en",
   "author": "VaultBox",

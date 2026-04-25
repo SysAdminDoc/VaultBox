@@ -18,12 +18,19 @@ A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's br
 
 Grab the latest from the [releases page](https://github.com/SysAdminDoc/VaultBox/releases/latest):
 
-| Asset                      | Description                           |
-| -------------------------- | ------------------------------------- |
-| `VaultBox-Setup-x.x.x.exe` | Installer (recommended)               |
-| `VaultBox-Server.exe`      | Standalone server (no install needed) |
-| `VaultBox-chrome.zip`      | Chrome/Edge/Brave extension (MV3)     |
-| `VaultBox-firefox.zip`     | Firefox extension                     |
+| Asset                      | Description                                              |
+| -------------------------- | -------------------------------------------------------- |
+| `VaultBox-Setup-x.x.x.exe` | Installer (recommended)                                  |
+| `VaultBox-Server.exe`      | Standalone server (no install needed)                    |
+| `VaultBox-chrome.crx`      | Chrome/Edge/Brave extension (signed CRX, drag-and-drop)  |
+| `VaultBox-chrome.zip`      | Chrome/Edge/Brave extension (unpacked / Web-Store ready) |
+| `VaultBox-firefox.zip`     | Firefox extension                                        |
+
+> Server (`VaultBox-Server.exe`) and the browser extension version separately:
+> the server is currently **v0.9.0** and the extension is currently
+> **v0.10.0**. They speak the same Bitwarden-compatible HTTP API, so
+> different patch-level versions on either side are fine as long as both
+> are recent.
 
 ## What This Is
 

@@ -4,6 +4,12 @@
  * This service wraps the standard ApiService and overrides the `send()` method
  * to prevent any network communication. Key methods that need to "work" offline
  * (like cipher CRUD, sync, auth) return synthetic/local responses.
+ *
+ * NOTE: this class is currently NOT wired into the active DI graph — VaultBox
+ * uses the standard ApiService talking to the local C++ server at
+ * 127.0.0.1:8787. This file is kept for use by air-gapped builds that have no
+ * companion server. Keep the network-block invariant intact even though no
+ * production path exercises it today.
  */
 import { Utils } from "@bitwarden/common/platform/misc/utils";
 import { SyncResponse } from "@bitwarden/common/platform/sync";
@@ -22,11 +28,11 @@ export class OfflineApiService extends ApiService {
   override async send(
     method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
     path: string,
-    body: any,
-    authedOrUserId: UserId | boolean,
-    hasResponse: boolean,
-    apiUrl?: string | null,
-    alterHeaders?: (headers: Headers) => void,
+    _body: any,
+    _authedOrUserId: UserId | boolean,
+    _hasResponse: boolean,
+    _apiUrl?: string | null,
+    _alterHeaders?: (headers: Headers) => void,
   ): Promise<any> {
     throw new Error(
       `[VaultBox Offline] Network request blocked: ${method} ${path}. ` +
@@ -103,11 +109,11 @@ export class OfflineApiService extends ApiService {
     return this.createLocalCipherResponse(request, id);
   }
 
-  override async deleteCipher(id: string): Promise<any> {
+  override async deleteCipher(_id: string): Promise<any> {
     return; // No-op, local state handles deletion
   }
 
-  override async deleteCipherAdmin(id: string): Promise<any> {
+  override async deleteCipherAdmin(_id: string): Promise<any> {
     return;
   }
 
