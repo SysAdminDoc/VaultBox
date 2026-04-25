@@ -46,6 +46,48 @@ base/
 *.zip
 *.provisionprofile
 
+# ============================================================================
+# Sensitive material — never commit these.
+# ----------------------------------------------------------------------------
+# Master vault stores: VaultBox runs at %LOCALAPPDATA%\VaultBox\vault.db
+# and exports as *.vaultbox; KeePass exports as *.kdbx; we also catch the
+# common Bitwarden / 1Password / Chrome export shapes in case someone drops
+# one in the working tree by mistake during a debug session.
+# ============================================================================
+vault.db
+vault.db-shm
+vault.db-wal
+vault.db-*
+*.vaultbox
+*.kdbx
+*.kdb
+bitwarden_export*.json
+bitwarden_export*.csv
+bitwarden-export*.json
+bitwarden-export*.csv
+chrome_passwords*.csv
+1password_export*.1pux
+1password_export*.1pif
+*-export-*.json
+*-export-*.csv
+
+# Catch-all for keys / certs / secrets that don't already match *.pem.
+*.key
+*.p12
+*.pfx
+*.pkcs12
+*.cer
+*.crt
+*.gpg
+*.asc
+
+# Environment / secret files.
+.env
+.env.*
+secrets.json
+credentials.json
+auth.json
+
 # Storybook
 documentation.json
 .eslintcache
