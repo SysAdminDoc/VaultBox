@@ -10,7 +10,7 @@ import { Observable, Subscription } from "rxjs";
 
 import { ApiService } from "../../../abstractions/api.service";
 import { NotificationResponse } from "../../../models/response/notification.response";
-import { InsecureUrlNotAllowedError } from "../../../services/api-errors";
+import { InsecureUrlNotAllowedError, isLocalhostHttpUrl } from "../../../services/api-errors";
 import { UserId } from "../../../types/guid";
 import { LogService } from "../../abstractions/log.service";
 import { PlatformUtilsService } from "../../abstractions/platform-utils.service";
@@ -78,8 +78,13 @@ export class SignalRConnectionService {
   ) {}
 
   connect$(userId: UserId, notificationsUrl: string) {
-    if (!notificationsUrl.startsWith("https://") && !this.platformUtilsService.isDev()) {
-      throw new InsecureUrlNotAllowedError();
+    // VaultBox: allow plain HTTP only for loopback addresses (127.0.0.1 / ::1 / localhost).
+    if (
+      !notificationsUrl.startsWith("https://") &&
+      !isLocalhostHttpUrl(notificationsUrl) &&
+      !this.platformUtilsService.isDev()
+    ) {
+      throw new InsecureUrlNotAllowedError(notificationsUrl);
     }
 
     return new Observable<SignalRNotification>((subsciber) => {

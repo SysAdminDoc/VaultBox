@@ -19,7 +19,7 @@ import {
 } from "../../models/response/notification.response";
 import { EnvironmentService } from "../../platform/abstractions/environment.service";
 import { PlatformUtilsService } from "../../platform/abstractions/platform-utils.service";
-import { InsecureUrlNotAllowedError } from "../../services/api-errors";
+import { InsecureUrlNotAllowedError, isLocalhostHttpUrl } from "../../services/api-errors";
 import { AnonymousHubService as AnonymousHubServiceAbstraction } from "../abstractions/anonymous-hub.service";
 
 export class AnonymousHubService implements AnonymousHubServiceAbstraction {
@@ -34,8 +34,13 @@ export class AnonymousHubService implements AnonymousHubServiceAbstraction {
 
   async createHubConnection(token: string) {
     this.url = (await firstValueFrom(this.environmentService.environment$)).getNotificationsUrl();
-    if (!this.url.startsWith("https://") && !this.platformUtilsService.isDev()) {
-      throw new InsecureUrlNotAllowedError();
+    // VaultBox: allow plain HTTP only for loopback addresses (127.0.0.1 / ::1 / localhost).
+    if (
+      !this.url.startsWith("https://") &&
+      !isLocalhostHttpUrl(this.url) &&
+      !this.platformUtilsService.isDev()
+    ) {
+      throw new InsecureUrlNotAllowedError(this.url);
     }
 
     this.anonHubConnection = new HubConnectionBuilder()

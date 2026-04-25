@@ -116,7 +116,7 @@ import { CipherResponse } from "../vault/models/response/cipher.response";
 import { DeleteAttachmentResponse } from "../vault/models/response/delete-attachment.response";
 import { OptionalCipherResponse } from "../vault/models/response/optional-cipher.response";
 
-import { InsecureUrlNotAllowedError } from "./api-errors";
+import { InsecureUrlNotAllowedError, isLocalhostHttpUrl } from "./api-errors";
 
 export type HttpOperations = {
   createRequest: (url: string, request: RequestInit) => Request;
@@ -1329,8 +1329,15 @@ export class ApiService implements ApiServiceAbstraction {
   }
 
   async fetch(request: Request): Promise<Response> {
-    if (!request.url.startsWith("https://") && !this.platformUtilsService.isDev()) {
-      throw new InsecureUrlNotAllowedError();
+    // VaultBox: allow plain HTTP for loopback (127.0.0.1 / ::1 / localhost).
+    // The desktop server binds to 127.0.0.1:8787 by design and never speaks TLS;
+    // any *non-loopback* http:// URL is still rejected.
+    if (
+      !request.url.startsWith("https://") &&
+      !isLocalhostHttpUrl(request.url) &&
+      !this.platformUtilsService.isDev()
+    ) {
+      throw new InsecureUrlNotAllowedError(request.url);
     }
 
     if (request.method === "GET") {
