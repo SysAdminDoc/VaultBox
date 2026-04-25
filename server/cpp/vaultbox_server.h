@@ -1,4 +1,4 @@
-// VaultBox Desktop v0.9.0 - Shared Types & Utilities
+// VaultBox Desktop v0.10.0 - Shared Types & Utilities
 #pragma once
 
 #ifndef UNICODE
@@ -74,7 +74,7 @@ namespace fs = std::filesystem;
 // ============================================================================
 // Version & Config
 // ============================================================================
-static const char* APP_VERSION = "0.9.0";
+static const char* APP_VERSION = "0.10.0";
 static const char* HOST = "127.0.0.1";
 static const int PORT = 8787;
 static const int TOKEN_EXPIRY_HOURS = 24 * 30;

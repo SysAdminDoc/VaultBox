@@ -4,7 +4,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ============================================
-echo  VaultBox Desktop v0.9.0 - C++ Build
+echo  VaultBox Desktop v0.10.0 - C++ Build
 echo ============================================
 
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x64

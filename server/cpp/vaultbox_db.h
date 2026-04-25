@@ -149,6 +149,12 @@ inline json build_profile(const json& u) {
         {"AccountKeys", build_account_keys(u)},
         {"securityStamp", safe_str("security_stamp")},
         {"forcePasswordReset", false}, {"usesKeyConnector", false}, {"avatarColor", nullptr},
+        // Extension's ProfileResponse reads CreationDate and VerifyDevices.
+        // Both fall back to sane defaults if absent, but emitting them keeps
+        // the response in line with what the upstream Bitwarden server sends
+        // and avoids spurious null fields in downstream observers.
+        {"creationDate", safe_str("created_at")},
+        {"verifyDevices", true},
         {"organizations", json::array()}, {"providers", json::array()},
         {"providerOrganizations", json::array()},
     };

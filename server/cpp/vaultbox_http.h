@@ -1121,6 +1121,107 @@ inline void setup_routes(httplib::Server& svr) {
         send_error(res, 404, "Not found");
     });
 
+    // ------------------------------------------------------------------
+    // Stubs for endpoints the Bitwarden extension calls but VaultBox does
+    // not need to back with real data. Each one returns the *exact* shape
+    // the extension's response parser expects (instead of relying on the
+    // generic 200-{} catch-all, which can cause downstream parsers to
+    // throw on missing required fields). These exist so that login/sync
+    // never sees a parser exception even when the extension probes a
+    // cloud-only feature.
+    // ------------------------------------------------------------------
+
+    // /accounts/avatar - return current profile so the extension can
+    // continue from the response without crashing.
+    svr.Put("/accounts/avatar", [](const httplib::Request& req, httplib::Response& res) {
+        auto user = get_current_user(req, res);
+        if (user.is_null()) return;
+        auto body = parse_body(req);
+        if (body.contains("avatarColor") && body["avatarColor"].is_string()) {
+            // We don't persist avatar color (no column for it), but the
+            // extension expects the response to echo the change. Build a
+            // profile with the new colour applied in-memory.
+            auto profile = build_profile(user);
+            profile["avatarColor"] = body["avatarColor"];
+            send_json(res, profile);
+            return;
+        }
+        send_json(res, build_profile(user));
+    });
+
+    // /accounts/subscription - VaultBox is offline so there's nothing to
+    // bill, but several screens call this endpoint and expect a payload
+    // shaped like SubscriptionResponse. Return the "free + permanent
+    // premium" combination.
+    svr.Get("/accounts/subscription", [](const httplib::Request& req, httplib::Response& res) {
+        if (get_current_user(req, res).is_null()) return;
+        send_json(res, {
+            {"object", "subscription"},
+            {"storageName", nullptr}, {"storageGb", 0},
+            {"maxStorageGb", nullptr},
+            {"license", nullptr}, {"expiration", nullptr},
+            {"upgradable", false}, {"useSecretsManager", false},
+            {"subscription", nullptr},
+        });
+    });
+
+    // /accounts/security-stamp - rotate the local security stamp.
+    // Used by the change-master-password and key-rotation flows; without
+    // it the extension shows a generic "couldn't update profile" error.
+    svr.Post("/accounts/security-stamp", [](const httplib::Request& req, httplib::Response& res) {
+        auto user = get_current_user(req, res);
+        if (user.is_null()) return;
+        auto body = parse_body(req);
+        // Verify the supplied master password hash before rotating the stamp.
+        if (!constant_time_eq(user["master_password_hash"].get<std::string>(),
+                              body.value("masterPasswordHash", ""))) {
+            send_error(res, 400, "Invalid password");
+            return;
+        }
+        DB db;
+        db.run("UPDATE accounts SET security_stamp=?, updated_at=? WHERE id=?",
+               {generate_uuid(), utcnow(), user["id"].get<std::string>()});
+        res.status = 200;
+    });
+
+    // /users/:id/public-key - return a user's RSA public key. Bitwarden
+    // uses this for organization sharing; in offline mode the only known
+    // user is the one you're logged in as, so we look it up in the
+    // accounts table and respond accordingly. The extension does call
+    // this for self in a couple of internal flows.
+    svr.Get(R"(/users/([^/]+)/public-key)", [](const httplib::Request& req, httplib::Response& res) {
+        auto caller = get_current_user(req, res);
+        if (caller.is_null()) return;
+        std::string uid = req.matches[1].str();
+        DB db;
+        auto rows = db.query("SELECT id, public_key FROM accounts WHERE id=?", {uid});
+        if (rows.empty()) {
+            send_error(res, 404, "User not found");
+            return;
+        }
+        std::string pub = rows[0].contains("public_key") && rows[0]["public_key"].is_string()
+            ? rows[0]["public_key"].get<std::string>()
+            : "";
+        send_json(res, {{"object", "userKey"}, {"userId", uid}, {"publicKey", pub}});
+    });
+
+    // /plans - empty list of premium plans. The extension's plan picker
+    // pulls this even on free accounts; the catch-all already returns an
+    // empty list, but spelling it out makes the protocol contract
+    // explicit and survives future catch-all changes.
+    svr.Get("/plans", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, {{"object", "list"}, {"data", json::array()}, {"continuationToken", nullptr}});
+    });
+
+    // /devices and /devices/:id/keys - device-trust feature endpoints.
+    // VaultBox is single-device by design, so we report the empty set.
+    svr.Get("/devices", [](const httplib::Request&, httplib::Response& res) {
+        send_json(res, {{"object", "list"}, {"data", json::array()}, {"continuationToken", nullptr}});
+    });
+    svr.Get(R"(/devices/([^/]+)/keys)", [](const httplib::Request&, httplib::Response& res) {
+        send_error(res, 404, "Device not found");
+    });
+
     // --- Exception/Error handler ---
     svr.set_exception_handler([](const httplib::Request&, httplib::Response& res, std::exception_ptr ep) {
         try { std::rethrow_exception(ep); }

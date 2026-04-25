@@ -2,7 +2,7 @@
 <p align="center"><img src="icon.png" width="128" alt="Vault Box"></p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.9.0-58A6FF?style=for-the-badge">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.10.0-58A6FF?style=for-the-badge">
   <img alt="License" src="https://img.shields.io/badge/license-Custom-4ade80?style=for-the-badge">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-58A6FF?style=for-the-badge">
 </p>
@@ -10,7 +10,7 @@
 
 # VaultBox - Local Password Manager
 
-![Version](https://img.shields.io/badge/version-v0.9.0-blue) ![Platform](https://img.shields.io/badge/platform-C%2B%2B-lightgrey) ![License](https://img.shields.io/badge/license-Custom-green)
+![Version](https://img.shields.io/badge/version-v0.10.0-blue) ![Platform](https://img.shields.io/badge/platform-C%2B%2B-lightgrey) ![License](https://img.shields.io/badge/license-Custom-green)
 
 A **KeePass alternative** with a modern UI. VaultBox is a fork of Bitwarden's browser extension that stores everything in an encrypted local file on your computer. No cloud servers, no accounts to create online, no telemetry.
 
@@ -27,7 +27,7 @@ Grab the latest from the [releases page](https://github.com/SysAdminDoc/VaultBox
 | `VaultBox-firefox.zip`     | Firefox extension                                        |
 
 > Server (`VaultBox-Server.exe`) and the browser extension version separately:
-> the server is currently **v0.9.0** and the extension is currently
+> the server is currently **v0.10.0** and the extension is currently
 > **v0.10.0**. They speak the same Bitwarden-compatible HTTP API, so
 > different patch-level versions on either side are fine as long as both
 > are recent.

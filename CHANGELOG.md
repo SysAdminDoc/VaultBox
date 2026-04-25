@@ -2,6 +2,98 @@
 
 All notable changes to bitwarden-offline will be documented in this file.
 
+## [v0.10.0] - 2026-04-25
+
+Ecosystem release. Both halves are versioned together for the first time:
+
+| Component          | Version |
+| ------------------ | ------- |
+| C++ Desktop server | v0.10.0 |
+| Browser extension  | v0.10.0 |
+
+### Server: Bitwarden-API protocol audit and gap-fix
+
+End-to-end audit of every endpoint the Bitwarden browser-extension calls
+against every endpoint VaultBox-Server actually serves. Fixed the gaps
+that caused clean upstream Bitwarden flows to silently no-op or fail
+cryptically against older VaultBox builds:
+
+- `/accounts/profile` and `/sync` now emit `creationDate` and
+  `verifyDevices` so the extension's `ProfileResponse` no longer
+  defaults silently when the user opens Account Security.
+- New endpoint **`PUT /accounts/avatar`** — echoes the requested
+  `avatarColor` back inside a real `ProfileResponse` instead of falling
+  through to the catch-all `200 {}` (which the extension parses as a
+  malformed profile).
+- New endpoint **`GET /accounts/subscription`** — returns the explicit
+  free-but-permanent-premium shape the extension's billing screen
+  expects. Previously the catch-all returned `{"object":"list",…}` for
+  GETs, which `SubscriptionResponse` rejected.
+- New endpoint **`POST /accounts/security-stamp`** — verifies master
+  password hash and rotates the stamp. Required by change-master-password
+  and key-rotation flows.
+- New endpoint **`GET /users/:id/public-key`** — returns the requested
+  user's RSA public key. Bitwarden's organization sharing path probes
+  this for self even on personal accounts.
+- New explicit stubs for **`GET /plans`**, **`GET /devices`**, and
+  **`GET /devices/:id/keys`** — same-shape stubs in case the catch-all is
+  ever made stricter.
+- Verified `/connect/token`, `/sync`, `/ciphers/*`, `/folders/*`,
+  `/accounts/keys`, `/accounts/kdf`, `/accounts/password`,
+  `/accounts/api-key`, `/accounts/delete`, `/ciphers/import`, and
+  `/ciphers/purge` against the extension's request and response models.
+  All shapes match.
+
+### Server: hardening / version sync
+
+- `APP_VERSION` bumped to `0.10.0` everywhere
+  (`vaultbox_server.h::APP_VERSION`, `vaultbox_server.cpp` header
+  comment, `vaultbox_ui.h` SPA About dialog, `build.bat` banner,
+  `installer.iss` `AppVersion`).
+- All v0.9.0 hardening (auto-lock watchdog, transactional imports,
+  refresh-token rotation, exponential unlock lockout, broadened mutex
+  coverage, fail-fast port-bind) carries forward unchanged.
+
+### Extension: hardening pass (carried over from earlier
+
+[extension-v0.10.0] entry below)
+
+- `VaultFileManager.exportToFile` no longer leaks blob URLs and the
+  anchor fallback is appended to the DOM before `.click()`.
+- `VaultFileManager.importFromFile` always settles its Promise, listens
+  for the file-input `cancel` event, and rejects oversized (>64 MiB)
+  files before reading them.
+- `parseAndValidate` rewritten to validate types/shape and back-fill
+  missing array buckets so consumers never read `undefined`.
+- `quickSave` aborts the writable stream on failure.
+- `buildVaultExport` now keys off the exact StateProvider prefix
+  `user_<userId>_` instead of substring-matching on the user id.
+- `getOfflineConfig` / `setOfflineConfig` validate config shape and
+  surface storage failures as rejected Promises.
+- `OfflineSyncService.fullSync` is reentrancy-safe via a shared
+  in-flight Promise.
+- Five upstream Angular template type errors fixed
+  (`spellcheck="false"` → `[spellcheck]="false"`).
+
+### Release artifacts
+
+- `VaultBox-Server.exe` — standalone server (drop-in)
+- `VaultBox-Setup-0.10.0.exe` — Inno Setup installer (recommended)
+- `VaultBox-chrome.crx` — signed CRX for Brave/Vivaldi/Opera or
+  enterprise-managed Chrome (drag-install on stock Chrome is blocked
+  by Google policy; see release notes)
+- `VaultBox-chrome.zip` — unpacked build for `Load unpacked` install
+
+### Migration notes
+
+- The `vault.db` schema is unchanged; existing vaults open as-is.
+- If you were on the old v0.5.0 server: install v0.10.0 over the top
+  (the installer will close the running instance), reopen VaultBox
+  Desktop, then reload the browser extension. All credentials are
+  preserved.
+- The login email shown by the desktop app's `/api/vaultbox/status`
+  is the email you must enter in the extension popup.
+
 ## [extension-v0.10.0] - 2026-04-25
 
 Browser-extension hardening pass. C++ server stays at v0.9.0; only the
@@ -28,7 +120,7 @@ Chrome/Firefox extension version was bumped (manifest `0.8.4 → 0.10.0`).
   consumers never read `undefined` for `ciphers/folders/...`.
 - `VaultFileManager.quickSave` aborts the writable stream on failure so the
   underlying file is not left locked across renderer reloads.
-- `VaultFileManager.supportsFileSystemAccess` now requires *both*
+- `VaultFileManager.supportsFileSystemAccess` now requires _both_
   `showOpenFilePicker` and `showSaveFilePicker` (Firefox exposes neither today;
   the previous check could be tricked by polyfills that only stub one).
 
@@ -37,7 +129,7 @@ Chrome/Firefox extension version was bumped (manifest `0.8.4 → 0.10.0`).
 - `buildVaultExport` no longer scans `chrome.storage.local` with naive
   `key.includes(userId)` matching. Bitwarden's StateProvider scopes per-user
   state with the exact prefix `user_<userId>_`; we now key off that prefix
-  and dispatch on the bucket *segment* rather than substring contains. This
+  and dispatch on the bucket _segment_ rather than substring contains. This
   prevents (a) cross-user contamination when a user-id substring happens to
   appear inside another user's key, (b) keys like `archived_ciphers_disk`
   being mis-classified as ciphers, and (c) `userKey = value as string` blindly
@@ -61,7 +153,7 @@ Chrome/Firefox extension version was bumped (manifest `0.8.4 → 0.10.0`).
 
 - Unused parameters in offline service shims renamed to `_*` to satisfy the
   no-unused-vars lint rule without disabling it.
-- `OfflineApiService` documents that it is currently *not* wired into the DI
+- `OfflineApiService` documents that it is currently _not_ wired into the DI
   graph (VaultBox uses the standard ApiService talking to 127.0.0.1:8787) so
   future contributors don't waste time tracing why production never enters
   these methods.

@@ -448,7 +448,7 @@ R"VBHTML(
             </div>
             <div class="about-info">
               <strong>VaultBox Desktop</strong><br>
-              Version <span id="about-version">0.9.0</span><br>
+              Version <span id="about-version">0.10.0</span><br>
               Offline Bitwarden-compatible password manager<br>
               Server: 127.0.0.1:8787<br><br>
               <span style="font-size:11px">Encryption: AES-256-CBC + HMAC-SHA256<br>

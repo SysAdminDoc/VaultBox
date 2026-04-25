@@ -1,4 +1,4 @@
-// VaultBox Desktop v0.9.0
+// VaultBox Desktop v0.10.0
 // Bitwarden-compatible offline password manager with WebView2 GUI
 // Single binary, zero runtime dependencies (except WebView2 runtime), fully offline
 // Server: 127.0.0.1:8787 | GUI: WebView2 + Bitwarden dark theme

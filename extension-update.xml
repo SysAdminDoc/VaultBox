@@ -18,7 +18,7 @@
 <gupdate xmlns="http://www.google.com/update2/response" protocol="2.0">
   <app appid="okcphajlkgdmhpimcbdkcmgpibkigamb">
     <updatecheck
-      codebase="https://github.com/SysAdminDoc/VaultBox/releases/download/extension-v0.10.0/VaultBox-chrome.crx"
+      codebase="https://github.com/SysAdminDoc/VaultBox/releases/download/v0.10.0/VaultBox-chrome.crx"
       version="0.10.0" />
   </app>
 </gupdate>
